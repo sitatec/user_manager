@@ -29,7 +29,8 @@ abstract class AuthenticationProvider extends ChangeNotifier {
   /// - `AuthenticationExceptionType.unknown`
   ///  - Thrown if an unidentified error occurred such as server side error
   ///    or Dart exception.
-  Future<void> signInWithEmailAndPassword(String email, String password);
+  Future<void> signInWithEmailAndPassword(
+      {@required String email, @required String password});
 
   /// Tries to create a new user account with the given email address and
   /// password.

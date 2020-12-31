@@ -1,3 +1,4 @@
-library authentication;
+library user_manager;
 
-// TODO: Export any libraries intended for clients of this package.
+export 'src/services/authentication_provider.dart';
+export 'src/repositories/user_repository_interface.dart';

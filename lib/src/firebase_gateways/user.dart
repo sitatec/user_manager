@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/foundation.dart';
+import 'package:user_manager/src/firebase_gateways/user_repository.dart';
 
 import '../entities/user_interface.dart';
 
@@ -11,10 +12,10 @@ class User implements UserInterface {
 
   User.fromFirebaseUser({
     @required this.firebaseUser,
-    @required Map<String, String> additionalData,
+    @required Map<String, dynamic> additionalData,
   }) {
-    _trophies = additionalData['trophies'];
-    _rideCount = int.tryParse(additionalData['ride_count']) ?? 0;
+    _trophies = additionalData[UserRepository.trophiesNode];
+    _rideCount = additionalData[UserRepository.rideCountNode];
     if (firebaseUser.photoURL.isEmpty) _getUserNameInitials();
   }
 

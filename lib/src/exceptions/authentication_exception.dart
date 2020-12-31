@@ -63,7 +63,7 @@ class AuthenticationException implements Exception {
       : this(
           exceptionType: AuthenticationExceptionType.invalidCredential,
           message:
-              "Nous n'arrivons pas à obtenir l'autorisation de vous connecter à l'aide de votre compte facebook. s'il vous plaît veuillez vous assurez que vous n'avez pas désactivé l'autorisation de Taluxi sur les paramètres de votre compte facebook.",
+              "Nous n'arrivons pas à obtenir l'autorisation de vous connecter à l'aide de votre compte facebook. Veuillez vous assurez que vous n'avez pas désactivé l'autorisation de Taluxi sur les paramètres de votre compte facebook.",
         );
 
   const AuthenticationException.accountExistsWithDifferentCredential()

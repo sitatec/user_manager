@@ -36,6 +36,9 @@ class FirebaseAuthProvider extends ChangeNotifier
     } else {
       Map<String, dynamic> additionalData;
       if (_status == AuthStatus.registering) {
+        // fetch user profile data that was updated while registering.
+        await firebaseUser.reload();
+        firebaseUser = _firebaseAuth.currentUser;
         additionalData = UserRepository.initialAdditionalData;
         unawaited(_userRepository.initAdditionalData(firebaseUser.uid));
       } else {
@@ -50,6 +53,8 @@ class FirebaseAuthProvider extends ChangeNotifier
 
   Future<void> signInWithFacebook() async {
     try {
+      // ignore: todo
+      // TODO test signInWithFacebook
       _switchStatus(AuthStatus.authenticating);
       final facebookLoginAccessToken = await FacebookAuth.instance.login();
       final facebookAuthCredential =
@@ -62,7 +67,10 @@ class FirebaseAuthProvider extends ChangeNotifier
   }
 
   @override
-  Future<void> signInWithEmailAndPassword(String email, String password) async {
+  Future<void> signInWithEmailAndPassword({
+    @required String email,
+    @required String password,
+  }) async {
     _switchStatus(AuthStatus.authenticating);
     try {
       await _firebaseAuth.signInWithEmailAndPassword(
@@ -97,6 +105,7 @@ class FirebaseAuthProvider extends ChangeNotifier
   @override
   Future<void> sendPasswordResetEmail(String email) async {
     try {
+      //TODO: tests sendPasswordResetEmail.
       await _firebaseAuth.sendPasswordResetEmail(email: email);
     } catch (e) {
       throw _convertException(e);
@@ -106,8 +115,11 @@ class FirebaseAuthProvider extends ChangeNotifier
   @override
   Future<void> signOut() async {
     try {
+      // if (FacebookAuth.instance.isLogged != null) {
+      // TODO: test Facebook logout.
+      //   await FacebookAuth.instance.logOut();
+      // }
       await _firebaseAuth.signOut();
-      await Future.delayed(Duration.zero);
     } catch (e) {
       throw _convertException(e);
     }
