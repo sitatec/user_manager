@@ -9,6 +9,6 @@ export 'src/exceptions/authentication_exception.dart';
 export 'src/exceptions/user_data_access_exception.dart';
 
 /// Initialize all [user_manager] services and dependencies.
-Future<void> initializeUserMangerServices() async {
-  if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+Future<FirebaseApp> initializeBackEndServices() {
+  return Firebase.initializeApp();
 }
