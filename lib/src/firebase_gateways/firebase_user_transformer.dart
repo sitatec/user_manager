@@ -1,21 +1,21 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/foundation.dart';
-import 'package:user_manager/src/firebase_gateways/user_repository.dart';
+import '../entities/user.dart';
 
-import '../entities/user_interface.dart';
+import 'firebase_user_repository.dart';
 
-class User implements UserInterface {
+class FirebaseUserTransformer implements User {
   final fb.User firebaseUser;
   String _trophies;
   int _rideCount;
   String _initials;
 
-  User.fromFirebaseUser({
+  FirebaseUserTransformer({
     @required this.firebaseUser,
     @required Map<String, dynamic> additionalData,
   }) {
-    _trophies = additionalData[UserRepository.trophiesNode];
-    _rideCount = additionalData[UserRepository.rideCountNode];
+    _trophies = additionalData[FirebaseUserRepository.trophiesNode];
+    _rideCount = additionalData[FirebaseUserRepository.rideCountNode];
     if (firebaseUser.photoURL.isEmpty) _getUserNameInitials();
   }
 

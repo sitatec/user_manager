@@ -3,10 +3,10 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pedantic/pedantic.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:user_manager/src/exceptions/user_data_access_exception.dart';
-import '../repositories/user_repository_interface.dart';
+import '../exceptions/user_data_access_exception.dart';
+import '../repositories/user_repository.dart';
 
-class UserRepository implements UserRepositoryInterface {
+class FirebaseUserRepository implements UserRepository {
   final DatabaseReference _realTimeDatabaseReference;
   CollectionReference _additionalDataReference;
   final FirebaseFirestore _firebaseFirestore;
@@ -19,10 +19,22 @@ class UserRepository implements UserRepositoryInterface {
   @visibleForTesting
   static const usersAdditionalDataReference = 'users_additional_data';
 
-  UserRepository({
-    FirebaseDatabase realTimeDatabase,
-    FirebaseFirestore firestoreDatabase,
-    SharedPreferences sharedPreferences,
+  static final FirebaseUserRepository _singleton =
+      FirebaseUserRepository._internal();
+
+  factory FirebaseUserRepository() => _singleton;
+
+  FirebaseUserRepository._internal()
+      : _realTimeDatabaseReference = FirebaseDatabase.instance.reference(),
+        _firebaseFirestore = FirebaseFirestore.instance {
+    SharedPreferences.getInstance().then((value) => _sharedPreferences = value);
+  }
+
+  @visibleForTesting
+  FirebaseUserRepository.forTest({
+    @required FirebaseDatabase realTimeDatabase,
+    @required FirebaseFirestore firestoreDatabase,
+    @required SharedPreferences sharedPreferences,
   })  : _realTimeDatabaseReference = realTimeDatabase?.reference() ??
             FirebaseDatabase.instance.reference(),
         _firebaseFirestore = firestoreDatabase ?? FirebaseFirestore.instance {

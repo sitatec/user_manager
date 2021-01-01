@@ -1,41 +1,43 @@
 import 'package:cloud_firestore_mocks/cloud_firestore_mocks.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_database_mocks/firebase_database_mocks.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:mockito/mockito.dart';
 import 'package:test/test.dart';
-import 'package:user_manager/src/entities/user_interface.dart';
+import 'package:user_manager/src/entities/user.dart';
 import 'package:user_manager/src/exceptions/authentication_exception.dart';
 import 'package:user_manager/src/firebase_gateways/firebase_auth_provider.dart';
-import 'package:user_manager/src/firebase_gateways/user_repository.dart';
-import 'package:user_manager/src/repositories/user_repository_interface.dart';
+import 'package:user_manager/src/firebase_gateways/firebase_user_repository.dart';
+import 'package:user_manager/src/repositories/user_repository.dart';
 import 'package:user_manager/src/services/authentication_provider.dart';
 
 import 'mocks/mock_firebase_auth.dart';
+import 'mocks/mock_shared_preferences.dart';
 
 class MockFacebookAuth extends Mock implements FacebookAuth {}
 
 void main() {
   FirebaseAuthProvider firebaseAuthProvider;
-  UserRepositoryInterface userRepository;
-  FirebaseAuth mockFirebaseAuth;
+  UserRepository userRepository;
+  firebase_auth.FirebaseAuth mockFirebaseAuth;
   setUp(() async {
     mockFirebaseAuth = MockFirebaseAuth();
     final firebaseFirestore = MockFirestoreInstance();
     final userAdditionalDataCollection = await firebaseFirestore
-        .collection(UserRepository.usersAdditionalDataReference);
+        .collection(FirebaseUserRepository.usersAdditionalDataReference);
     await userAdditionalDataCollection
         .doc('aabbcc')
-        .set(UserRepository.initialAdditionalData);
+        .set(FirebaseUserRepository.initialAdditionalData);
 
-    userRepository = UserRepository(
+    userRepository = FirebaseUserRepository.forTest(
         firestoreDatabase: firebaseFirestore,
-        realTimeDatabase: MockFirebaseDatabase.instance);
+        realTimeDatabase: MockFirebaseDatabase.instance,
+        sharedPreferences: MockSharedPreferences());
     firebaseAuthProvider =
-        FirebaseAuthProvider(userRepository, firebaseAuth: mockFirebaseAuth);
+        FirebaseAuthProvider.forTest(userRepository, mockFirebaseAuth);
   });
   group('Authentication :', () {
-    test('User should be null if no user signed in', () {
+    test('FirebaseUserTransformer should be null if no user signed in', () {
       expect(firebaseAuthProvider.user, isNull);
     });
 
@@ -43,40 +45,40 @@ void main() {
       await firebaseAuthProvider.signInWithEmailAndPassword(
           email: 'test@tes.te', password: 'password');
       await Future.delayed(Duration.zero);
-      expect(firebaseAuthProvider.user, isA<UserInterface>());
+      expect(firebaseAuthProvider.user, isA<User>());
     });
 
     test('Sign out', () async {
       await firebaseAuthProvider.signInWithEmailAndPassword(
           email: 'test@tes.te', password: 'password');
       await Future.delayed(Duration.zero); // wait for next event loop
-      expect(firebaseAuthProvider.user, isA<UserInterface>());
+      expect(firebaseAuthProvider.user, isA<User>());
       await firebaseAuthProvider.signOut();
       expect(firebaseAuthProvider.user, isNull);
     });
 
     test(
-        'FirebaseAuthProvider should notify its listeners when AuthStatus changes',
+        'FirebaseAuthProvider should notify its listeners when AuthState changes',
         () async {
-      var authStatusLog = <AuthStatus>[];
+      var authStateLog = <AuthState>[];
       firebaseAuthProvider.addListener(() {
-        authStatusLog.add(firebaseAuthProvider.authStatus);
+        authStateLog.add(firebaseAuthProvider.authState);
       });
       await firebaseAuthProvider.signInWithEmailAndPassword(
         email: 'te@tes.t',
         password: 'password',
       );
       await Future.delayed(Duration.zero); // wait for next event loop
-      expect(authStatusLog, [
-        AuthStatus.authenticating,
-        AuthStatus.authenticated,
+      expect(authStateLog, [
+        AuthState.authenticating,
+        AuthState.authenticated,
       ]);
       await firebaseAuthProvider.signOut();
       await Future.delayed(Duration.zero); // wait for next event loop
-      expect(authStatusLog, [
-        AuthStatus.authenticating,
-        AuthStatus.authenticated,
-        AuthStatus.unauthenticated,
+      expect(authStateLog, [
+        AuthState.authenticating,
+        AuthState.authenticated,
+        AuthState.unauthenticated,
       ]);
     });
 
@@ -87,14 +89,15 @@ void main() {
         email: 'etst@tes.dgg',
         password: 'null',
       );
-      expect(firebaseAuthProvider.user, isA<UserInterface>());
+      await Future.delayed(Duration.zero);
+      expect(firebaseAuthProvider.user, isA<User>());
     });
 
     test('FirebaseAuthProvider should notify its listeners while registration',
         () async {
-      var authStatusLog = <AuthStatus>[];
+      var authStateLog = <AuthState>[];
       firebaseAuthProvider.addListener(() {
-        authStatusLog.add(firebaseAuthProvider.authStatus);
+        authStateLog.add(firebaseAuthProvider.authState);
       });
       await firebaseAuthProvider.registerUser(
         firstName: 'firstName',
@@ -102,7 +105,8 @@ void main() {
         email: 'etst@tes.dgg',
         password: 'null',
       );
-      expect(authStatusLog, [AuthStatus.registering, AuthStatus.authenticated]);
+      await Future.delayed(Duration.zero); // wait for next event loop
+      expect(authStateLog, [AuthState.registering, AuthState.authenticated]);
     });
 
     test(
@@ -115,15 +119,15 @@ void main() {
         email: 'etst@tes.dgg',
         password: 'null',
       );
-      // await Future.delayed(Duration(seconds: 2)); // wait for next event loop
+      await Future.delayed(Duration.zero); // wait for next event loop
       expect(
           firebaseAuthProvider.user.userName, equals('$firstName $lastName'));
     });
-    test('Sign in with facebook login', () {
-      // ignore: todo
-      // TODO test Facebook sign in sign out.
-    });
-    // ignore: todo
+    // TODO test Facebook sign in sign out.
+    // test('Sign in with facebook login', () {
+    //
+    //
+    // });
     // TODO : test password reset
   });
   group('Should convert [FirebaseAuthException] with error code', () {

@@ -1,61 +1,95 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:pedantic/pedantic.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
-import 'package:user_manager/src/exceptions/user_data_access_exception.dart';
+import '../exceptions/user_data_access_exception.dart';
 import '../exceptions/authentication_exception.dart';
 import '../services/authentication_provider.dart';
-import 'user.dart';
-import '../repositories/user_repository_interface.dart';
-import '../entities/user_interface.dart';
-import 'user_repository.dart';
+import 'firebase_user_repository.dart';
+import '../repositories/user_repository.dart';
+import '../entities/user.dart';
+import 'firebase_user_transformer.dart';
 
-class FirebaseAuthProvider extends ChangeNotifier
+class FirebaseAuthProvider
+    with ChangeNotifier
     implements AuthenticationProvider {
   firebase_auth.FirebaseAuth _firebaseAuth;
-  AuthStatus _status = AuthStatus.uninitialized;
-  final UserRepositoryInterface _userRepository;
-  UserInterface _user;
+  AuthState _state = AuthState.uninitialized;
+  final _authStateStreamController = StreamController<AuthState>();
+  final UserRepository _userRepository;
+  String _authStateSwitchingError;
+  User _user;
 
-  @override
-  AuthStatus get authStatus => _status;
-  @override
-  User get user => _user;
+  static final _singleton = FirebaseAuthProvider._internal();
 
-  FirebaseAuthProvider(this._userRepository,
-      {firebase_auth.FirebaseAuth firebaseAuth})
-      : assert(_userRepository != null) {
-    _firebaseAuth = firebaseAuth ?? firebase_auth.FirebaseAuth.instance;
+  factory FirebaseAuthProvider() => _singleton;
+
+  FirebaseAuthProvider._internal()
+      : _userRepository = UserRepository.instance,
+        _firebaseAuth = firebase_auth.FirebaseAuth.instance {
     _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
   }
 
+  @visibleForTesting
+  FirebaseAuthProvider.forTest(this._userRepository, this._firebaseAuth)
+      : assert(_userRepository != null && _firebaseAuth != null) {
+    _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+  }
+
+  @override
+  AuthState get authState => _state;
+  @override
+  User get user => _user;
+  @override
+  String get authStateSwitchingError => _authStateSwitchingError;
+  @override
+  Stream<AuthState> get authBinaryState => _authStateStreamController.stream;
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   Future<void> _onAuthStateChanged(firebase_auth.User firebaseUser) async {
-    if (firebaseUser == null) {
-      _user = null;
-      _switchStatus(AuthStatus.unauthenticated);
-    } else {
-      Map<String, dynamic> additionalData;
-      if (_status == AuthStatus.registering) {
-        // fetch user profile data that was updated while registering.
-        await firebaseUser.reload();
-        firebaseUser = _firebaseAuth.currentUser;
-        additionalData = UserRepository.initialAdditionalData;
-        unawaited(_userRepository.initAdditionalData(firebaseUser.uid));
+    // TODO: refactoring
+    _authStateSwitchingError = null;
+    try {
+      if (firebaseUser == null) {
+        _user = null;
+        _switchState(AuthState.unauthenticated);
       } else {
+        Map<String, dynamic> additionalData;
+        if (_state == AuthState.registering) {
+          // fetch user profile data that was updated while registering.
+          await firebaseUser.reload();
+          firebaseUser = _firebaseAuth.currentUser;
+          additionalData = FirebaseUserRepository.initialAdditionalData;
+          unawaited(_userRepository.initAdditionalData(firebaseUser.uid));
+        }
         additionalData =
             await _userRepository.getAdditionalData(firebaseUser.uid);
+        _user = FirebaseUserTransformer(
+          firebaseUser: firebaseUser,
+          additionalData: additionalData,
+        );
+        _switchState(AuthState.authenticated);
       }
-      _user = User.fromFirebaseUser(
-          firebaseUser: firebaseUser, additionalData: additionalData);
-      _switchStatus(AuthStatus.authenticated);
+    } catch (e) {
+      // TODO implement better error handler.
+      _authStateSwitchingError =
+          'Une Erreur est survenue lors de la connexion. Veuillez réessayer.';
+      notifyListeners();
     }
   }
 
+  @override
   Future<void> signInWithFacebook() async {
     try {
       // ignore: todo
       // TODO test signInWithFacebook
-      _switchStatus(AuthStatus.authenticating);
+      _switchState(AuthState.authenticating);
       final facebookLoginAccessToken = await FacebookAuth.instance.login();
       final facebookAuthCredential =
           firebase_auth.FacebookAuthProvider.credential(
@@ -71,7 +105,7 @@ class FirebaseAuthProvider extends ChangeNotifier
     @required String email,
     @required String password,
   }) async {
-    _switchStatus(AuthStatus.authenticating);
+    _switchState(AuthState.authenticating);
     try {
       await _firebaseAuth.signInWithEmailAndPassword(
         email: email,
@@ -88,9 +122,8 @@ class FirebaseAuthProvider extends ChangeNotifier
     @required String lastName,
     @required String email,
     @required String password,
-    String phoneNumber,
   }) async {
-    _switchStatus(AuthStatus.registering);
+    _switchState(AuthState.registering);
     try {
       final userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
           email: email, password: password);
@@ -125,8 +158,12 @@ class FirebaseAuthProvider extends ChangeNotifier
     }
   }
 
-  void _switchStatus(AuthStatus targetStatus) {
-    _status = targetStatus;
+  void _switchState(AuthState targetState) {
+    _state = targetState;
+    if (targetState == AuthState.authenticated ||
+        targetState == AuthState.unauthenticated) {
+      _authStateStreamController.sink.add(targetState);
+    }
     notifyListeners();
   }
 

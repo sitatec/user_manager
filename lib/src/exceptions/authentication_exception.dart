@@ -10,7 +10,7 @@ class AuthenticationException implements Exception {
       : this(
           exceptionType: AuthenticationExceptionType.unknown,
           message:
-              "Une Erreur critique est survenue. Si l'erreur persiste veuillez redémarrer l'application.",
+              "Une erreur critique est survenue lors de l'authantification.Veuillez réessayer, si l'erreur persiste veuillez redémarrer l'application.",
         );
 
   const AuthenticationException.invalidVerificationCode()

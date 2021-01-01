@@ -1,13 +1,11 @@
-import 'dart:math';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_firestore_mocks/cloud_firestore_mocks.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_database_mocks/firebase_database_mocks.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:user_manager/src/firebase_gateways/user_repository.dart';
-import 'package:user_manager/src/repositories/user_repository_interface.dart';
+import 'package:user_manager/src/firebase_gateways/firebase_user_repository.dart';
+import 'package:user_manager/src/repositories/user_repository.dart';
 
 import 'mocks/mock_shared_preferences.dart';
 
@@ -29,33 +27,33 @@ class _MockFirestoreInstance extends MockFirestoreInstance {
 
 void main() {
   FirebaseFirestore firebaseFirestore;
-  UserRepositoryInterface userRepository;
+  UserRepository userRepository;
   FirebaseDatabase firebaseDatabase;
   SharedPreferences sharedPreferences;
   CollectionReference userAdditionalDataCollection;
   const userUid = 'testUid';
   const newUserUid = 'testNewUid';
   const userAdditionalData = {
-    UserRepository.rideCountNode: 45,
-    UserRepository.trophiesNode: 'Ac4'
+    FirebaseUserRepository.rideCountNode: 45,
+    FirebaseUserRepository.trophiesNode: 'Ac4'
   };
   setUp(() async {
     sharedPreferences = MockSharedPreferences();
     firebaseFirestore = _MockFirestoreInstance();
     firebaseDatabase = MockFirebaseDatabase.instance;
-    userRepository = UserRepository(
+    userRepository = FirebaseUserRepository.forTest(
         firestoreDatabase: firebaseFirestore,
         realTimeDatabase: firebaseDatabase,
         sharedPreferences: sharedPreferences);
     userAdditionalDataCollection = await firebaseFirestore
-        .collection(UserRepository.usersAdditionalDataReference);
+        .collection(FirebaseUserRepository.usersAdditionalDataReference);
     await userAdditionalDataCollection.doc(userUid).set(userAdditionalData);
   });
-  group('User Additional data : ', () {
+  group('FirebaseUserTransformer Additional data : ', () {
     // test(
     //     'FirebaseFirestore instence should be created intrnally if not injected',
     //     () {
-    //   expect(UserRepository(), isNot(throwsException));
+    //   expect(FirebaseUserRepository(), isNot(throwsException));
     // });
 
     test(
@@ -91,15 +89,15 @@ void main() {
             "Document with ID '$newUserUid' should be created by the above instruction.",
       );
       expect((await getNewUserData()).data(),
-          equals(UserRepository.initialAdditionalData));
+          equals(FirebaseUserRepository.initialAdditionalData));
     });
 
     test(
         'Should update additional data of user which uid is given in parameter',
         () async {
       const updatedUserAdditionalData = {
-        UserRepository.rideCountNode: 645,
-        UserRepository.trophiesNode: 'other_Ac4'
+        FirebaseUserRepository.rideCountNode: 645,
+        FirebaseUserRepository.trophiesNode: 'other_Ac4'
       };
       final getUserData =
           () async => await userAdditionalDataCollection.doc(userUid).get();
@@ -120,7 +118,7 @@ void main() {
     const otherCoordinates = {'latitude': 16.403942, 'longitude': 10.038241};
     MockFirebaseDatabase.instance
         .reference()
-        .child(UserRepository.onlineNode)
+        .child(FirebaseUserRepository.onlineNode)
         .set({
       userUid: '${coordinates['latitude']}-${coordinates['longitude']}',
       newUserUid:
@@ -168,8 +166,9 @@ void main() {
     });
 
     test('Should not get remote data if local data is available', () async {
-      await sharedPreferences.setString(UserRepository.trophiesNode, 'test');
-      await sharedPreferences.setInt(UserRepository.rideCountNode, 4);
+      await sharedPreferences.setString(
+          FirebaseUserRepository.trophiesNode, 'test');
+      await sharedPreferences.setInt(FirebaseUserRepository.rideCountNode, 4);
       await userRepository.getAdditionalData(userUid);
       // Firestore network must be enabled before fetching remote data so if
       // the [networkStateLog] doesn't contains [enabled] that means remote data
@@ -198,7 +197,7 @@ void main() {
       await userRepository.initAdditionalData(userUid);
       expect(
         MockSharedPreferences.data,
-        equals(UserRepository.initialAdditionalData),
+        equals(FirebaseUserRepository.initialAdditionalData),
       );
     });
 
@@ -266,10 +265,10 @@ void main() {
           false; //local data must not be fetched otherwire network state will not change.
     });
     test(
-        'Firestore network should be disabled when initializing [UserRepository]',
+        'Firestore network should be disabled when initializing [FirebaseUserRepository]',
         () {
       expect(_MockFirestoreInstance.networkStateLog, isEmpty);
-      final _ = UserRepository(
+      final _ = FirebaseUserRepository.forTest(
         firestoreDatabase: firebaseFirestore,
         realTimeDatabase: firebaseDatabase,
         sharedPreferences: sharedPreferences,

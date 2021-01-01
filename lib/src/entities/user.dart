@@ -1,4 +1,4 @@
-abstract class UserInterface {
+abstract class User {
   String get photoUrl;
   String get uid;
   String get userName;

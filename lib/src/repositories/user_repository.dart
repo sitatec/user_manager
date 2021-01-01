@@ -1,6 +1,10 @@
 import 'package:meta/meta.dart';
+import '../firebase_gateways/firebase_user_repository.dart';
 
-abstract class UserRepositoryInterface {
+abstract class UserRepository {
+  /// The UserRepository singleton
+  static UserRepository get instance => FirebaseUserRepository();
+
   /// Returns the user additionals data in the type of `Map<String, String>` such as ride count, trophies...
   Future<Map<String, dynamic>> getAdditionalData(String userUid);
 
