@@ -1,23 +1,26 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
-import 'package:pedantic/pedantic.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../exceptions/user_data_access_exception.dart';
 import '../repositories/user_repository.dart';
 
 class FirebaseUserRepository implements UserRepository {
-  final DatabaseReference _realTimeDatabaseReference;
+  SharedPreferences _sharedPreferences;
   CollectionReference _additionalDataReference;
   final FirebaseFirestore _firebaseFirestore;
-  SharedPreferences _sharedPreferences;
+  final DatabaseReference _realTimeDatabaseReference;
+  static const trophiesKey = 't';
+  static const totalRideCountKey = 'r';
+  static const initialAdditionalData = {trophiesKey: '', totalRideCountKey: 0};
   @visibleForTesting
   static const onlineNode = 'online';
-  static const trophiesNode = 't';
-  static const rideCountNode = 'r';
-  static const initialAdditionalData = {trophiesNode: null, rideCountNode: 0};
   @visibleForTesting
   static const usersAdditionalDataReference = 'users_additional_data';
+  @visibleForTesting
+  static const rideCountHistoryKey = 'ride_count_history';
 
   static final FirebaseUserRepository _singleton =
       FirebaseUserRepository._internal();
@@ -28,6 +31,7 @@ class FirebaseUserRepository implements UserRepository {
       : _realTimeDatabaseReference = FirebaseDatabase.instance.reference(),
         _firebaseFirestore = FirebaseFirestore.instance {
     SharedPreferences.getInstance().then((value) => _sharedPreferences = value);
+    _setupFirestore();
   }
 
   @visibleForTesting
@@ -44,10 +48,13 @@ class FirebaseUserRepository implements UserRepository {
     } else {
       _sharedPreferences = sharedPreferences;
     }
+    _setupFirestore();
+  }
+
+  void _setupFirestore() {
     _additionalDataReference =
         _firebaseFirestore.collection(usersAdditionalDataReference);
     _firebaseFirestore.settings = Settings(persistenceEnabled: false);
-    _firebaseFirestore.disableNetwork();
   }
 
   @override
@@ -56,29 +63,27 @@ class FirebaseUserRepository implements UserRepository {
       // ! Cache data access error should not affect the program execution
       final cachedData = await _getCahedData().catchError((_) => null);
       if (cachedData != null) return cachedData;
-      await _firebaseFirestore.enableNetwork();
       final document = await _additionalDataReference.doc(userUid).get();
       final documentData = document.data();
-      await _firebaseFirestore.disableNetwork();
-      unawaited(_updateCacheData(documentData).catchError((_) => null));
+      await _updateCacheData(documentData).catchError((_) => null);
       return documentData;
     } catch (e) {
-      throw _convertException(e);
+      throw UserDataAccessException.unknown();
     }
   }
 
   Future<Map<String, dynamic>> _getCahedData() async {
-    final trophies = _sharedPreferences.getString(trophiesNode);
-    final rideCount = _sharedPreferences.getInt(rideCountNode);
+    final trophies = _sharedPreferences.getString(trophiesKey);
+    final rideCount = _sharedPreferences.getInt(totalRideCountKey);
     if (rideCount == null || trophies == null) return null;
-    return {trophiesNode: trophies, rideCountNode: rideCount};
+    return {trophiesKey: trophies, totalRideCountKey: rideCount};
   }
 
   Future<void> _updateCacheData(Map<String, dynamic> data) async {
     final trophiesDataIsSet =
-        await _sharedPreferences.setString(trophiesNode, data[trophiesNode]);
-    final rideCountDataIsSet =
-        await _sharedPreferences.setInt(rideCountNode, data[rideCountNode]);
+        await _sharedPreferences.setString(trophiesKey, data[trophiesKey]);
+    final rideCountDataIsSet = await _sharedPreferences.setInt(
+        totalRideCountKey, data[totalRideCountKey]);
     if (!trophiesDataIsSet || !rideCountDataIsSet) {
       // delete local data if it is not up to date.
       await _sharedPreferences.clear();
@@ -94,7 +99,7 @@ class FirebaseUserRepository implements UserRepository {
       if (coordinates.value == null) return null;
       return _coordinatesStringToMap(coordinates.value);
     } catch (e) {
-      throw _convertException(e);
+      throw UserDataAccessException.unknown();
     }
   }
 
@@ -129,36 +134,42 @@ class FirebaseUserRepository implements UserRepository {
         yield _coordinatesStringToMap(event.snapshot.value);
       }
     } catch (e) {
-      throw _convertException(e);
+      throw UserDataAccessException.unknown();
     }
   }
 
   @override
   Future<void> initAdditionalData(String userUid) async {
     try {
-      unawaited(
-        _updateCacheData(initialAdditionalData).catchError((_) => null),
-      );
-      await _firebaseFirestore.enableNetwork();
+      await _updateCacheData(initialAdditionalData).catchError((_) => null);
       await _additionalDataReference.doc(userUid).set(initialAdditionalData);
-      await _firebaseFirestore.disableNetwork();
     } catch (e) {
-      throw _convertException(e);
+      throw UserDataAccessException.unknown();
     }
   }
 
   @override
   Future<void> updateAdditionalData({
-    Map<String, dynamic> data,
-    String userUid,
+    @required Map<String, dynamic> data,
+    @required String userUid,
   }) async {
     try {
-      unawaited(_updateCacheData(data).catchError((_) => null));
-      await _firebaseFirestore.enableNetwork();
+      await _updateCacheData(data).catchError((_) => null);
       await _additionalDataReference.doc(userUid).update(data);
-      await _firebaseFirestore.disableNetwork();
     } catch (e) {
-      throw _convertException(e);
+      throw UserDataAccessException.unknown();
+    }
+  }
+
+  @override
+  Future<void> incrmentRideCount(String userId) async {
+    try {
+      var additionalData = await getAdditionalData(userId);
+      additionalData[totalRideCountKey]++;
+      await updateAdditionalData(data: additionalData, userUid: userId);
+      await incrementTodaysRideCount();
+    } catch (e) {
+      throw UserDataAccessException.unknown();
     }
   }
 
@@ -175,14 +186,80 @@ class FirebaseUserRepository implements UserRepository {
     throw UnimplementedError();
   }
 
-  dynamic _convertException(dynamic exception) {
-    switch (exception.runtimeType) {
-      case DatabaseError:
-      case FirebaseException:
-        return UserDataAccessException.unknown();
-        break;
-      default:
-        return exception; // <=> rethrow
+  @visibleForTesting
+  Future<void> incrementTodaysRideCount() async {
+    final todaysRideCountKey = _generateKeyFromDateTime(DateTime.now());
+    final rideCountHistoryJson = _sharedPreferences.get(rideCountHistoryKey);
+    final rideCountHistory = json.decode(rideCountHistoryJson);
+    var todaysRideCount = rideCountHistory[todaysRideCountKey];
+    todaysRideCount = (todaysRideCount ?? 0) + 1;
+    rideCountHistory[todaysRideCountKey] = todaysRideCount;
+    if (rideCountHistory.length >= 50) {
+      clearHistoryOlderThanOneMonth(rideCountHistory);
     }
+    await _sharedPreferences.setString(
+        rideCountHistoryKey, json.encode(rideCountHistory));
+  }
+
+  String _generateKeyFromDateTime(DateTime dateTime) =>
+      dateTime.toString().split(' ').first;
+
+  @visibleForTesting
+  void clearHistoryOlderThanOneMonth(
+      Map<String, dynamic> globalRideCountHistory) {
+    // TODO: optimize
+    final todayDate = DateTime.now();
+    globalRideCountHistory.removeWhere((historyDate, _) {
+      final currentHistoryDate = DateTime.parse(historyDate);
+      return todayDate.difference(currentHistoryDate).inDays > 30;
+    });
+  }
+
+  @override
+  String getTheRecentlyWonTrophies(String userTrophies) {
+    var trophiesWon = '';
+    var userRideCountSinceXDays;
+    UserRepository.trophiesList.forEach((trophyLevel, trophy) async {
+      userRideCountSinceXDays =
+          userRideCountFromFewDaysToToday(trophy.timeLimit?.inDays);
+      if (!userTrophies.contains(trophyLevel) &&
+          userRideCountSinceXDays >= trophy.minRideCount) {
+        trophiesWon += trophyLevel;
+      }
+    });
+    return trophiesWon;
+  }
+
+  @visibleForTesting
+  int userRideCountFromFewDaysToToday(int numberOfDays) {
+    if (numberOfDays == null) {
+      return _sharedPreferences.getInt(totalRideCountKey);
+    }
+    var rideCountSinceXDays = 0;
+    final todaysDate = DateTime.now();
+    final rideCountHistoryJson =
+        _sharedPreferences.getString(rideCountHistoryKey);
+    final rideCountHistory = json.decode(rideCountHistoryJson);
+    var currentHistoryDate;
+    var currentHistoryKey;
+    while (numberOfDays-- > 0) {
+      currentHistoryDate = todaysDate.subtract(Duration(days: numberOfDays));
+      currentHistoryKey = _generateKeyFromDateTime(currentHistoryDate);
+      rideCountSinceXDays += rideCountHistory[currentHistoryKey];
+    }
+    return rideCountSinceXDays;
   }
 }
+
+// TODO: implement better exception handler.
+
+// dynamic _convertException(dynamic exception) {
+//   switch (exception.runtimeType) {
+//     case DatabaseError:
+//     case FirebaseException:
+//       return UserDataAccessException.unknown();
+//       break;
+//     default:
+//       return exception; // <=> rethrow
+//   }
+// }

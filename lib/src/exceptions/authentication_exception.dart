@@ -63,7 +63,7 @@ class AuthenticationException implements Exception {
       : this(
           exceptionType: AuthenticationExceptionType.invalidCredential,
           message:
-              "Nous n'arrivons pas à obtenir l'autorisation de vous connecter à l'aide de votre compte facebook. Veuillez vous assurez que vous n'avez pas désactivé l'autorisation de Taluxi sur les paramètres de votre compte facebook.",
+              "Nous n'avons pas pu obtenir l'autorisation de vous connecter à l'aide de votre compte facebook. Veuillez vous assurez que vous n'avez pas désactivé l'autorisation de Taluxi sur les paramètres de votre compte facebook.",
         );
 
   const AuthenticationException.accountExistsWithDifferentCredential()
@@ -71,8 +71,19 @@ class AuthenticationException implements Exception {
           exceptionType:
               AuthenticationExceptionType.accountExistsWithDifferentCredential,
           message:
-              "Un conflit d'adresse email est survenu, il se peut que vous vous êtes connecté au part avant avec une méthode de connexion différente de celle que tentez d'utiliser actuellement mais que vous avez utilisez la même adresse pour les deux méthodes. Ce type d'erreur peut arriver si vous avez créer un compte avec votre email et que vous tentez par la suite de vous connecter avec un compte facebook qui est lié à cet email , dans ce cas vous devez vous connecter en saisissant votre email et mot de passe au lieu de tenter de vous connecter avec votre compte facebook.",
+              "Un conflit d'identifiants est survenu. Ce type d'erreur peut arriver si vous avez créer un compte Taluxi avec une adresse email et que vous tentez par la suite de vous connecter avec un compte facebook qui est lié à cette adresse email, dans ce cas vous devez vous connecter en saisissant votre email et mot de passe au lieu de tenter de vous connecter avec votre compte facebook.",
         );
+
+  const AuthenticationException.facebookLoginFailed()
+      : this(
+          exceptionType: AuthenticationExceptionType.facebookLoginFailed,
+          message:
+              "La connexion à l'aide de votre compte facebook à échouer, s'il vous plaît veuillez réessayer. Si on vous affiche une page de connexion facebook, connectez vous de la même façon dont vous avez l'habitude de le faire pour vous connecter à votre compte facebook.",
+        );
+  const AuthenticationException.tooManyRequests()
+      : this(
+            exceptionType: AuthenticationExceptionType.tooManyRequests,
+            message: 'Trop de tentative, veuillez réessayer plus tard.');
 }
 
 enum AuthenticationExceptionType {
@@ -85,5 +96,7 @@ enum AuthenticationExceptionType {
   userNotFound,
   wrongPassword,
   invalidCredential,
-  accountExistsWithDifferentCredential
+  accountExistsWithDifferentCredential,
+  facebookLoginFailed,
+  tooManyRequests
 }

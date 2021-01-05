@@ -11,8 +11,8 @@ import 'package:user_manager/src/firebase_gateways/firebase_user_repository.dart
 import 'package:user_manager/src/repositories/user_repository.dart';
 import 'package:user_manager/src/services/authentication_provider.dart';
 
-import 'mocks/mock_firebase_auth.dart';
-import 'mocks/mock_shared_preferences.dart';
+import '../mocks/mock_firebase_auth.dart';
+import '../mocks/mock_shared_preferences.dart';
 
 class MockFacebookAuth extends Mock implements FacebookAuth {}
 
@@ -37,7 +37,7 @@ void main() {
         FirebaseAuthProvider.forTest(userRepository, mockFirebaseAuth);
   });
   group('Authentication :', () {
-    test('FirebaseUserTransformer should be null if no user signed in', () {
+    test('FirebaseUserInterface should be null if no user signed in', () {
       expect(firebaseAuthProvider.user, isNull);
     });
 
@@ -182,6 +182,7 @@ final errorCodeMatcherForEachMethod =
     'invalid-email': AuthenticationExceptionType.invalidEmail,
     'wrong-password': AuthenticationExceptionType.wrongPassword,
     'user-disabled': AuthenticationExceptionType.userDisabled,
+    'too-many-requests': AuthenticationExceptionType.tooManyRequests,
   },
   'registerUser': {
     'invalid-email': AuthenticationExceptionType.invalidEmail,

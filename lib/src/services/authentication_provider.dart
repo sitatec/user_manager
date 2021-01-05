@@ -12,9 +12,6 @@ abstract class AuthenticationProvider with ChangeNotifier {
   /// The [user]
   User get user;
 
-  /// Return the error message if a error occure when switching auth state
-  String get authStateSwitchingError;
-
   /// Return a binary state of authentication which can be wether
   /// [AuthState.authenticated] or [AuthState.unauthenticated].
   Stream<AuthState> get authBinaryState;

@@ -4,7 +4,7 @@ class UserDataAccessException implements Exception {
   const UserDataAccessException({
     this.exceptionType = UserDataAccessExceptionType.unknown,
     this.message =
-        "Une Erreur critique est survenue lors de la récupération de vos données. Si l'erreur persiste veuillez redémarrer l'application.",
+        "Une Erreur est survenue lors de la récupération de vos données. Si l'erreur persiste, réessayez plus tard.",
   });
   const UserDataAccessException.unknown() : this();
 }

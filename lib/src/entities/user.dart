@@ -3,8 +3,9 @@ abstract class User {
   String get uid;
   String get userName;
   String get phoneNumber;
-  String get initials;
   String get email;
   String get trophies;
-  int get rideCount;
+  String get rideCount;
+  String get formatedName;
+  Future<void> refreshAdditionalData();
 }

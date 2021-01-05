@@ -1,29 +1,15 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_firestore_mocks/cloud_firestore_mocks.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_database_mocks/firebase_database_mocks.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:test/test.dart';
 import 'package:user_manager/src/firebase_gateways/firebase_user_repository.dart';
 import 'package:user_manager/src/repositories/user_repository.dart';
 
-import 'mocks/mock_shared_preferences.dart';
-
-class _MockFirestoreInstance extends MockFirestoreInstance {
-  static var networkIsEnabled = false;
-  static var networkStateLog = <String>[];
-  @override
-  Future<void> disableNetwork() async {
-    networkStateLog.add('disabled');
-    networkIsEnabled = false;
-  }
-
-  @override
-  Future<void> enableNetwork() async {
-    networkStateLog.add('enabled');
-    networkIsEnabled = true;
-  }
-}
+import '../mocks/mock_shared_preferences.dart';
 
 void main() {
   FirebaseFirestore firebaseFirestore;
@@ -34,12 +20,12 @@ void main() {
   const userUid = 'testUid';
   const newUserUid = 'testNewUid';
   const userAdditionalData = {
-    FirebaseUserRepository.rideCountNode: 45,
-    FirebaseUserRepository.trophiesNode: 'Ac4'
+    FirebaseUserRepository.totalRideCountKey: 45,
+    FirebaseUserRepository.trophiesKey: 'Ac4'
   };
   setUp(() async {
     sharedPreferences = MockSharedPreferences();
-    firebaseFirestore = _MockFirestoreInstance();
+    firebaseFirestore = MockFirestoreInstance();
     firebaseDatabase = MockFirebaseDatabase.instance;
     userRepository = FirebaseUserRepository.forTest(
         firestoreDatabase: firebaseFirestore,
@@ -49,13 +35,7 @@ void main() {
         .collection(FirebaseUserRepository.usersAdditionalDataReference);
     await userAdditionalDataCollection.doc(userUid).set(userAdditionalData);
   });
-  group('FirebaseUserTransformer Additional data : ', () {
-    // test(
-    //     'FirebaseFirestore instence should be created intrnally if not injected',
-    //     () {
-    //   expect(FirebaseUserRepository(), isNot(throwsException));
-    // });
-
+  group('Users Additional data : ', () {
     test(
         'Should be returns additional data of user which uid is given in parameter.',
         () async {
@@ -96,8 +76,8 @@ void main() {
         'Should update additional data of user which uid is given in parameter',
         () async {
       const updatedUserAdditionalData = {
-        FirebaseUserRepository.rideCountNode: 645,
-        FirebaseUserRepository.trophiesNode: 'other_Ac4'
+        FirebaseUserRepository.totalRideCountKey: 645,
+        FirebaseUserRepository.trophiesKey: 'other_Ac4'
       };
       final getUserData =
           () async => await userAdditionalDataCollection.doc(userUid).get();
@@ -108,9 +88,13 @@ void main() {
       );
       expect((await getUserData()).data(), equals(updatedUserAdditionalData));
       expect((await getUserData()).data(), isNot(userAdditionalData));
-      //we never know ^ ;-)
+      //we never know  ^  ;-)
     });
   });
+
+/******************************************************************************/
+/****************************** [ New Group ] *********************************/
+/******************************************************************************/
 
   group('Taxi driver infos :', () {
     // Driver infos such as online, current location...
@@ -124,7 +108,6 @@ void main() {
       newUserUid:
           '${otherCoordinates['latitude']}-${otherCoordinates['longitude']}'
     });
-    setUp(() {});
     test(
         'Should return the coordinates of user which uid is passed in parameter',
         () async {
@@ -149,11 +132,15 @@ void main() {
     });
     // TODO: test write operations on taxi drivers information
   });
+
+/******************************************************************************/
+/****************************** [ New Group ] *********************************/
+/******************************************************************************/
+
   group('Cache data (SharedPreferences) :', () {
     setUp(() {
       MockSharedPreferences.data.clear();
       MockSharedPreferences.enabled = true;
-      _MockFirestoreInstance.networkStateLog.clear();
     });
     tearDownAll(() {
       MockSharedPreferences.enabled = false;
@@ -166,22 +153,22 @@ void main() {
     });
 
     test('Should not get remote data if local data is available', () async {
+      await firebaseFirestore.clearPersistence();
       await sharedPreferences.setString(
-          FirebaseUserRepository.trophiesNode, 'test');
-      await sharedPreferences.setInt(FirebaseUserRepository.rideCountNode, 4);
-      await userRepository.getAdditionalData(userUid);
-      // Firestore network must be enabled before fetching remote data so if
-      // the [networkStateLog] doesn't contains [enabled] that means remote data
-      // wasn't fetched.
+          FirebaseUserRepository.trophiesKey, 'from_local_cache_data');
+      await sharedPreferences.setInt(
+          FirebaseUserRepository.totalRideCountKey, 4);
       expect(
-        _MockFirestoreInstance.networkStateLog.contains('enabled'),
-        isFalse,
-      );
+          await userRepository.getAdditionalData(userUid),
+          equals({
+            FirebaseUserRepository.trophiesKey: 'from_local_cache_data',
+            FirebaseUserRepository.totalRideCountKey: 4
+          }));
     });
 
     test('Should get remote data if local data is not available', () async {
-      await userRepository.getAdditionalData(userUid);
-      expect(_MockFirestoreInstance.networkStateLog, contains('enabled'));
+      expect(MockSharedPreferences.data, isEmpty);
+      expect(await userRepository.getAdditionalData(userUid), isNotEmpty);
     });
 
     test('Should update local data when remote data is fetched', () async {
@@ -258,58 +245,167 @@ void main() {
       expect(MockSharedPreferences.thrownExceptionCount, 1);
     });
   });
-  group('Firestore network handling', () {
+
+/******************************************************************************/
+/****************************** [ New Group ] *********************************/
+/******************************************************************************/
+
+  group('Trophies and ride count history management :', () {
+    Map<String, dynamic> rideCountHistory() => jsonDecode(
+        MockSharedPreferences.data[FirebaseUserRepository.rideCountHistoryKey]);
+
     setUp(() {
-      _MockFirestoreInstance.networkStateLog.clear();
-      MockSharedPreferences.enabled =
-          false; //local data must not be fetched otherwire network state will not change.
-    });
-    test(
-        'Firestore network should be disabled when initializing [FirebaseUserRepository]',
-        () {
-      expect(_MockFirestoreInstance.networkStateLog, isEmpty);
-      final _ = FirebaseUserRepository.forTest(
-        firestoreDatabase: firebaseFirestore,
-        realTimeDatabase: firebaseDatabase,
-        sharedPreferences: sharedPreferences,
-      );
-      expect(_MockFirestoreInstance.networkStateLog, equals(['disabled']));
-    });
-
-    test(
-        'When getting data, firestore network should be enabled first and then disabled after remote data fetching finish',
-        () async {
-      expect(_MockFirestoreInstance.networkStateLog, isEmpty);
-      await userRepository.getAdditionalData(userUid);
-      expect(
-        _MockFirestoreInstance.networkStateLog,
-        equals(['enabled', 'disabled']),
-      );
+      MockSharedPreferences.enabled = true;
+      final todayRideCountKey = DateTime.now().toString().split(' ').first;
+      MockSharedPreferences.data[FirebaseUserRepository.rideCountHistoryKey] =
+          json.encode({
+        todayRideCountKey: 14,
+        '2021-01-03': 6,
+        '2021-01-02': 0,
+        '2021-01-01': 23,
+        '2020-12-31': 17,
+        '2020-12-30': 0,
+        '2020-12-29': 04
+      });
+      MockSharedPreferences.data[FirebaseUserRepository.totalRideCountKey] =
+          100;
     });
 
-    test(
-        'When updating data, firestore network should be enabled first and then disabled after remote data fetching finish',
-        () async {
-      expect(_MockFirestoreInstance.networkStateLog, isEmpty);
-      await userRepository.updateAdditionalData(
-        userUid: userUid,
-        data: userAdditionalData,
-      );
+    test('Should increment ride count', () async {
+      await userRepository.incrmentRideCount(userUid);
+      final additionalData = await userRepository.getAdditionalData(userUid);
       expect(
-        _MockFirestoreInstance.networkStateLog,
-        equals(['enabled', 'disabled']),
+        additionalData[FirebaseUserRepository.totalRideCountKey],
+        equals((userAdditionalData[FirebaseUserRepository.totalRideCountKey]
+                as int) +
+            1),
       );
     });
 
-    test(
-        'When initializing data, firestore network should be enabled first and then disabled after remote data fetching finish',
-        () async {
-      expect(_MockFirestoreInstance.networkStateLog, isEmpty);
-      await userRepository.initAdditionalData(userUid);
+    test('should clear history older than one month', () {
+      final rideCountHistoryContainingOld = <String, dynamic>{}
+        ..addAll(rideCountHistory());
+      // Add old history.
+      rideCountHistoryContainingOld.addAll({
+        '2019-01-04': 34,
+        '2020-01-03': 6,
+        '2020-06-02': 0,
+        '2020-12-01': 23,
+        '2020-12-03': 17,
+        '2012-12-30': 0,
+        '2017-12-29': 04
+      });
+      expect(rideCountHistoryContainingOld.length,
+          greaterThan(rideCountHistory().length));
+      (userRepository as FirebaseUserRepository)
+          .clearHistoryOlderThanOneMonth(rideCountHistoryContainingOld);
+      expect(rideCountHistoryContainingOld, equals(rideCountHistory()));
+    });
+
+    test('Should increment today\'s ride count', () async {
+      final todayRideCountKey = DateTime.now().toString().split(' ').first;
+      final todayRideCount = rideCountHistory()[todayRideCountKey] ?? 0;
+      await (userRepository as FirebaseUserRepository)
+          .incrementTodaysRideCount();
+      expect(rideCountHistory()[todayRideCountKey], equals(todayRideCount + 1));
+    });
+
+    test('Should return ride count from a few days to today', () {
+      // TODO: refactoring.
+      //! The map keys used here most be the same to those used in data initialization in the [setUp()] function.
+      var rideCountFrom3Days = rideCountHistory()['2021-01-04'];
+      rideCountFrom3Days += rideCountHistory()['2021-01-03'];
+      rideCountFrom3Days += rideCountHistory()['2021-01-02'];
       expect(
-        _MockFirestoreInstance.networkStateLog,
-        equals(['enabled', 'disabled']),
-      );
+          (userRepository as FirebaseUserRepository)
+              .userRideCountFromFewDaysToToday(3),
+          equals(rideCountFrom3Days));
+    });
+
+    test('Should return trophies that the user has recently won', () {
+      //! To anderstand how the letters for the trophies level is choosed for the
+      //! tests, see the [UserRepository] class which has a static
+      //! [Map<String, _Trophy>].
+      expect(userRepository.getTheRecentlyWonTrophies(''), equals('ABCDEF'));
+      expect(userRepository.getTheRecentlyWonTrophies('A'), equals('BCDEF'));
+      expect(userRepository.getTheRecentlyWonTrophies('AB'), equals('CDEF'));
+      expect(userRepository.getTheRecentlyWonTrophies('DFA'), equals('BCE'));
+      expect(userRepository.getTheRecentlyWonTrophies('CDEF'), equals('AB'));
     });
   });
 }
+
+/******************************************************************************/
+/****************************** [ New Group ] *********************************/
+/******************************************************************************/
+
+// group('Firestore network handling', () {
+//   setUp(() {
+//     _MockFirestoreInstance.networkStateLog.clear();
+//     MockSharedPreferences.enabled =
+//         false; //local data must not be fetched otherwire network state will not change.
+//   });
+//   test(
+//       'Firestore network should be disabled when initializing [FirebaseUserRepository]',
+//       () {
+//     expect(_MockFirestoreInstance.networkStateLog, isEmpty);
+//     final _ = FirebaseUserRepository.forTest(
+//       firestoreDatabase: firebaseFirestore,
+//       realTimeDatabase: firebaseDatabase,
+//       sharedPreferences: sharedPreferences,
+//     );
+//     expect(_MockFirestoreInstance.networkStateLog, equals(['disabled']));
+//   });
+
+//   test(
+//       'When getting data, firestore network should be enabled first and then disabled after remote data fetching finish',
+//       () async {
+//     expect(_MockFirestoreInstance.networkStateLog, isEmpty);
+//     await userRepository.getAdditionalData(userUid);
+//     expect(
+//       _MockFirestoreInstance.networkStateLog,
+//       equals(['enabled', 'disabled']),
+//     );
+//   });
+
+//   test(
+//       'When updating data, firestore network should be enabled first and then disabled after remote data fetching finish',
+//       () async {
+//     expect(_MockFirestoreInstance.networkStateLog, isEmpty);
+//     await userRepository.updateAdditionalData(
+//       userUid: userUid,
+//       data: userAdditionalData,
+//     );
+//     expect(
+//       _MockFirestoreInstance.networkStateLog,
+//       equals(['enabled', 'disabled']),
+//     );
+//   });
+
+//   test(
+//       'When initializing data, firestore network should be enabled first and then disabled after remote data fetching finish',
+//       () async {
+//     expect(_MockFirestoreInstance.networkStateLog, isEmpty);
+//     await userRepository.initAdditionalData(userUid);
+//     expect(
+//       _MockFirestoreInstance.networkStateLog,
+//       equals(['enabled', 'disabled']),
+//     );
+//   });
+// });
+
+// class _MockFirestoreInstance extends MockFirestoreInstance {
+//   static var networkIsEnabled = false;
+//   static var networkStateLog = <String>[];
+//   @override
+//   Future<void> disableNetwork() async {
+//     networkStateLog.add('disabled');
+//     networkIsEnabled = false;
+//   }
+
+//   @override
+//   Future<void> enableNetwork() async {
+//     networkStateLog.add('enabled');
+//     networkIsEnabled = true;
+//   }
+// }

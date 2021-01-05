@@ -2,15 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:pedantic/pedantic.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import '../exceptions/user_data_access_exception.dart';
 import '../exceptions/authentication_exception.dart';
 import '../services/authentication_provider.dart';
-import 'firebase_user_repository.dart';
 import '../repositories/user_repository.dart';
 import '../entities/user.dart';
-import 'firebase_user_transformer.dart';
+import 'firebase_user_interface.dart';
 
 class FirebaseAuthProvider
     with ChangeNotifier
@@ -19,9 +17,7 @@ class FirebaseAuthProvider
   AuthState _state = AuthState.uninitialized;
   final _authStateStreamController = StreamController<AuthState>();
   final UserRepository _userRepository;
-  String _authStateSwitchingError;
   User _user;
-
   static final _singleton = FirebaseAuthProvider._internal();
 
   factory FirebaseAuthProvider() => _singleton;
@@ -43,8 +39,6 @@ class FirebaseAuthProvider
   @override
   User get user => _user;
   @override
-  String get authStateSwitchingError => _authStateSwitchingError;
-  @override
   Stream<AuthState> get authBinaryState => _authStateStreamController.stream;
 
   @override
@@ -54,49 +48,48 @@ class FirebaseAuthProvider
 
   Future<void> _onAuthStateChanged(firebase_auth.User firebaseUser) async {
     // TODO: refactoring
-    _authStateSwitchingError = null;
     try {
       if (firebaseUser == null) {
         _user = null;
         _switchState(AuthState.unauthenticated);
       } else {
-        Map<String, dynamic> additionalData;
-        if (_state == AuthState.registering) {
+        if (authState == AuthState.registering) {
           // fetch user profile data that was updated while registering.
           await firebaseUser.reload();
           firebaseUser = _firebaseAuth.currentUser;
-          additionalData = FirebaseUserRepository.initialAdditionalData;
-          unawaited(_userRepository.initAdditionalData(firebaseUser.uid));
         }
-        additionalData =
-            await _userRepository.getAdditionalData(firebaseUser.uid);
-        _user = FirebaseUserTransformer(
+        _user = FirebaseUserInterface(
           firebaseUser: firebaseUser,
-          additionalData: additionalData,
+          userRepository: _userRepository,
         );
         _switchState(AuthState.authenticated);
       }
     } catch (e) {
-      // TODO implement better error handler.
-      _authStateSwitchingError =
-          'Une Erreur est survenue lors de la connexion. Veuillez réessayer.';
-      notifyListeners();
+      //TODO: rapport error.
+      if (_firebaseAuth.currentUser != null &&
+          authState != AuthState.authenticated) {
+        _switchState(AuthState.authenticated);
+      }
     }
   }
 
   @override
   Future<void> signInWithFacebook() async {
     try {
-      // ignore: todo
       // TODO test signInWithFacebook
       _switchState(AuthState.authenticating);
-      final facebookLoginAccessToken = await FacebookAuth.instance.login();
-      final facebookAuthCredential =
+      final facebookLoginAccessToken = await FacebookAuth.instance
+          .login(loginBehavior: LoginBehavior.DIALOG_ONLY);
+      final facebookOAuthCredential =
           firebase_auth.FacebookAuthProvider.credential(
               facebookLoginAccessToken.token);
-      await _firebaseAuth.signInWithCredential(facebookAuthCredential);
+      final userCredential =
+          await _firebaseAuth.signInWithCredential(facebookOAuthCredential);
+      if (userCredential.additionalUserInfo.isNewUser) {
+        await _userRepository.initAdditionalData(userCredential.user.uid);
+      }
     } catch (e) {
-      throw _convertException(e);
+      throw _handleException(e);
     }
   }
 
@@ -105,14 +98,14 @@ class FirebaseAuthProvider
     @required String email,
     @required String password,
   }) async {
-    _switchState(AuthState.authenticating);
     try {
+      _switchState(AuthState.authenticating);
       await _firebaseAuth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
     } catch (e) {
-      throw _convertException(e);
+      throw _handleException(e);
     }
   }
 
@@ -123,15 +116,15 @@ class FirebaseAuthProvider
     @required String email,
     @required String password,
   }) async {
-    _switchState(AuthState.registering);
     try {
+      _switchState(AuthState.registering);
       final userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
           email: email, password: password);
-      unawaited(_userRepository.initAdditionalData(userCredential.user.uid));
+      await _userRepository.initAdditionalData(userCredential.user.uid);
       await userCredential.user
           .updateProfile(displayName: '$firstName $lastName');
     } catch (e) {
-      throw _convertException(e);
+      throw _handleException(e);
     }
   }
 
@@ -141,20 +134,16 @@ class FirebaseAuthProvider
       //TODO: tests sendPasswordResetEmail.
       await _firebaseAuth.sendPasswordResetEmail(email: email);
     } catch (e) {
-      throw _convertException(e);
+      throw _handleException(e);
     }
   }
 
   @override
   Future<void> signOut() async {
     try {
-      // if (FacebookAuth.instance.isLogged != null) {
-      // TODO: test Facebook logout.
-      //   await FacebookAuth.instance.logOut();
-      // }
       await _firebaseAuth.signOut();
     } catch (e) {
-      throw _convertException(e);
+      throw _handleException(e);
     }
   }
 
@@ -167,13 +156,20 @@ class FirebaseAuthProvider
     notifyListeners();
   }
 
-  dynamic _convertException(dynamic exception) {
+  dynamic _handleException(dynamic exception) {
+    if (_firebaseAuth.currentUser == null) {
+      _switchState(AuthState.unauthenticated);
+    }
     if (exception is firebase_auth.FirebaseAuthException) {
       return _convertFirebaseAuthException(exception);
     }
     if (exception is UserDataAccessException) {
       return exception; // <==> rethrow
     }
+    if (exception is FacebookAuthException) {
+      return const AuthenticationException.facebookLoginFailed();
+    }
+    // TODO: implement error rapport systéme.
     return const AuthenticationException.unknown();
   }
 
@@ -206,6 +202,9 @@ class FirebaseAuthProvider
         break;
       case 'wrong-password':
         return const AuthenticationException.wrongPassword();
+        break;
+      case 'too-many-requests':
+        return const AuthenticationException.tooManyRequests();
         break;
       default:
         return AuthenticationException.unknown();

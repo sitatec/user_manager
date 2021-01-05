@@ -15,7 +15,7 @@ class MockSharedPreferences extends Mock implements SharedPreferences {
   }
 
   @override
-  String getString(String key) {
+  dynamic get(String key) {
     if (!enabled) return null;
     if (throwException) {
       thrownExceptionCount++;
@@ -23,6 +23,9 @@ class MockSharedPreferences extends Mock implements SharedPreferences {
     }
     return data[key];
   }
+
+  @override
+  String getString(String key) => get(key) as String;
 
   @override
   Future<bool> setString(String key, String value) {
@@ -36,14 +39,7 @@ class MockSharedPreferences extends Mock implements SharedPreferences {
   }
 
   @override
-  int getInt(String key) {
-    if (!enabled) return null;
-    if (throwException) {
-      thrownExceptionCount++;
-      throw Exception();
-    }
-    return data[key];
-  }
+  int getInt(String key) => get(key) as int;
 
   @override
   Future<bool> setInt(String key, int value) {
