@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore_mocks/cloud_firestore_mocks.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_database_mocks/firebase_database_mocks.dart';
@@ -21,10 +23,11 @@ void main() {
   UserRepository userRepository;
   firebase_auth.FirebaseAuth mockFirebaseAuth;
   setUp(() async {
+    MockSharedPreferences.enabled = true;
     mockFirebaseAuth = MockFirebaseAuth();
     final firebaseFirestore = MockFirestoreInstance();
     final userAdditionalDataCollection = await firebaseFirestore
-        .collection(FirebaseUserRepository.usersAdditionalDataReference);
+        .collection(FirebaseUserRepository.usersAdditionalDataKey);
     await userAdditionalDataCollection
         .doc('aabbcc')
         .set(FirebaseUserRepository.initialAdditionalData);

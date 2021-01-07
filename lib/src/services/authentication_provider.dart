@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:user_manager/src/entities/user.dart';
+import '../entities/user.dart';
 import '../firebase_gateways/firebase_auth_provider.dart';
 
 /// {@template auth_provider}

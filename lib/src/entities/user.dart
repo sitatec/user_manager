@@ -7,5 +7,8 @@ abstract class User {
   String get trophies;
   String get rideCount;
   String get formatedName;
+  String get trophiesCount;
+  Map<String, dynamic> get rideCountHistory;
+  // Map<String, dynamic> get reviews;
   Future<void> refreshAdditionalData();
 }

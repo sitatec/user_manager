@@ -15,7 +15,7 @@ class FirebaseAuthProvider
     implements AuthenticationProvider {
   firebase_auth.FirebaseAuth _firebaseAuth;
   AuthState _state = AuthState.uninitialized;
-  final _authStateStreamController = StreamController<AuthState>();
+  final _authStateStreamController = StreamController<AuthState>.broadcast();
   final UserRepository _userRepository;
   User _user;
   static final _singleton = FirebaseAuthProvider._internal();
@@ -26,12 +26,16 @@ class FirebaseAuthProvider
       : _userRepository = UserRepository.instance,
         _firebaseAuth = firebase_auth.FirebaseAuth.instance {
     _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+    _authStateStreamController.onListen =
+        () => _authStateStreamController.sink.add(_state);
   }
 
   @visibleForTesting
   FirebaseAuthProvider.forTest(this._userRepository, this._firebaseAuth)
       : assert(_userRepository != null && _firebaseAuth != null) {
     _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+    _authStateStreamController.onListen =
+        () => _authStateStreamController.sink.add(_state);
   }
 
   @override
@@ -43,6 +47,7 @@ class FirebaseAuthProvider
 
   @override
   void dispose() {
+    _authStateStreamController.close();
     super.dispose();
   }
 

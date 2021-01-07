@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test/test.dart';
 import 'package:user_manager/src/firebase_gateways/firebase_user_repository.dart';
 import 'package:user_manager/src/repositories/user_repository.dart';
+import 'package:user_manager/src/utils/utils.dart';
 
 import '../mocks/mock_shared_preferences.dart';
 
@@ -21,7 +22,7 @@ void main() {
   const newUserUid = 'testNewUid';
   const userAdditionalData = {
     FirebaseUserRepository.totalRideCountKey: 45,
-    FirebaseUserRepository.trophiesKey: 'Ac4'
+    FirebaseUserRepository.trophiesKey: 'Ac4',
   };
   setUp(() async {
     sharedPreferences = MockSharedPreferences();
@@ -32,7 +33,7 @@ void main() {
         realTimeDatabase: firebaseDatabase,
         sharedPreferences: sharedPreferences);
     userAdditionalDataCollection = await firebaseFirestore
-        .collection(FirebaseUserRepository.usersAdditionalDataReference);
+        .collection(FirebaseUserRepository.usersAdditionalDataKey);
     await userAdditionalDataCollection.doc(userUid).set(userAdditionalData);
   });
   group('Users Additional data : ', () {
@@ -77,7 +78,7 @@ void main() {
         () async {
       const updatedUserAdditionalData = {
         FirebaseUserRepository.totalRideCountKey: 645,
-        FirebaseUserRepository.trophiesKey: 'other_Ac4'
+        FirebaseUserRepository.trophiesKey: 'other_Ac4',
       };
       final getUserData =
           () async => await userAdditionalDataCollection.doc(userUid).get();
@@ -154,16 +155,14 @@ void main() {
 
     test('Should not get remote data if local data is available', () async {
       await firebaseFirestore.clearPersistence();
+      final dataJson = json.encode({
+        FirebaseUserRepository.trophiesKey: 'from_local_cache_data',
+        FirebaseUserRepository.totalRideCountKey: 4,
+      });
       await sharedPreferences.setString(
-          FirebaseUserRepository.trophiesKey, 'from_local_cache_data');
-      await sharedPreferences.setInt(
-          FirebaseUserRepository.totalRideCountKey, 4);
-      expect(
-          await userRepository.getAdditionalData(userUid),
-          equals({
-            FirebaseUserRepository.trophiesKey: 'from_local_cache_data',
-            FirebaseUserRepository.totalRideCountKey: 4
-          }));
+          FirebaseUserRepository.usersAdditionalDataKey, dataJson);
+      expect(await userRepository.getAdditionalData(userUid),
+          equals(json.decode(dataJson)));
     });
 
     test('Should get remote data if local data is not available', () async {
@@ -175,7 +174,10 @@ void main() {
       expect(MockSharedPreferences.data, isEmpty);
       final remoteData = await userRepository.getAdditionalData(userUid);
       await Future.delayed(Duration.zero);
-      expect(MockSharedPreferences.data, equals(remoteData));
+      expect(
+          json.decode(MockSharedPreferences
+              .data[FirebaseUserRepository.usersAdditionalDataKey]),
+          equals(remoteData));
     });
 
     test('Local data should be initialized while initializing remote data',
@@ -183,7 +185,8 @@ void main() {
       expect(MockSharedPreferences.data, isEmpty);
       await userRepository.initAdditionalData(userUid);
       expect(
-        MockSharedPreferences.data,
+        json.decode(MockSharedPreferences
+            .data[FirebaseUserRepository.usersAdditionalDataKey]),
         equals(FirebaseUserRepository.initialAdditionalData),
       );
     });
@@ -195,7 +198,8 @@ void main() {
         data: userAdditionalData,
       );
       expect(
-        MockSharedPreferences.data,
+        json.decode(MockSharedPreferences
+            .data[FirebaseUserRepository.usersAdditionalDataKey]),
         equals(userAdditionalData),
       );
     });
@@ -251,24 +255,44 @@ void main() {
 /******************************************************************************/
 
   group('Trophies and ride count history management :', () {
+    //! In this group we need to use some methods that is not publicly exposed
+    //! by the [UserRepository] class so we need to make a copy of original
+    //! userRepository initialized in the global [setUp] function and cast it to
+    //! [FirebaseUserRepository] which expose needed methods publicly for tests.
+    FirebaseUserRepository userRepository2;
     Map<String, dynamic> rideCountHistory() => jsonDecode(
         MockSharedPreferences.data[FirebaseUserRepository.rideCountHistoryKey]);
+    String dateOfXDaysAgo(int daysAgo) {
+      final historyDate = DateTime.now().subtract(Duration(days: daysAgo));
+      return generateKeyFromDateTime(historyDate);
+    }
 
     setUp(() {
+      userRepository2 = userRepository;
       MockSharedPreferences.enabled = true;
-      final todayRideCountKey = DateTime.now().toString().split(' ').first;
       MockSharedPreferences.data[FirebaseUserRepository.rideCountHistoryKey] =
           json.encode({
-        todayRideCountKey: 14,
-        '2021-01-03': 6,
-        '2021-01-02': 0,
-        '2021-01-01': 23,
-        '2020-12-31': 17,
-        '2020-12-30': 0,
-        '2020-12-29': 04
+        dateOfXDaysAgo(0): 14,
+        dateOfXDaysAgo(1): 6,
+        dateOfXDaysAgo(2): 0,
+        dateOfXDaysAgo(3): 23,
+        dateOfXDaysAgo(4): 17,
+        dateOfXDaysAgo(5): 0,
+        dateOfXDaysAgo(6): 04
       });
       MockSharedPreferences.data[FirebaseUserRepository.totalRideCountKey] =
           100;
+    });
+
+    test('Should generate date in format yyyy-mm-dd ', () {
+      String fixeTo2Digit(int number) {
+        return number.toString().length < 2 ? '0$number' : '$number';
+      }
+
+      final now = DateTime.now();
+      final generatedDate = generateKeyFromDateTime(now);
+      expect(generatedDate,
+          '${now.year}-${fixeTo2Digit(now.month)}-${fixeTo2Digit(now.day)}');
     });
 
     test('Should increment ride count', () async {
@@ -276,9 +300,8 @@ void main() {
       final additionalData = await userRepository.getAdditionalData(userUid);
       expect(
         additionalData[FirebaseUserRepository.totalRideCountKey],
-        equals((userAdditionalData[FirebaseUserRepository.totalRideCountKey]
-                as int) +
-            1),
+        (userAdditionalData[FirebaseUserRepository.totalRideCountKey] as int) +
+            1,
       );
     });
 
@@ -297,7 +320,7 @@ void main() {
       });
       expect(rideCountHistoryContainingOld.length,
           greaterThan(rideCountHistory().length));
-      (userRepository as FirebaseUserRepository)
+      userRepository2
           .clearHistoryOlderThanOneMonth(rideCountHistoryContainingOld);
       expect(rideCountHistoryContainingOld, equals(rideCountHistory()));
     });
@@ -305,32 +328,40 @@ void main() {
     test('Should increment today\'s ride count', () async {
       final todayRideCountKey = DateTime.now().toString().split(' ').first;
       final todayRideCount = rideCountHistory()[todayRideCountKey] ?? 0;
-      await (userRepository as FirebaseUserRepository)
-          .incrementTodaysRideCount();
+      await userRepository2.incrementTodaysRideCount();
       expect(rideCountHistory()[todayRideCountKey], equals(todayRideCount + 1));
     });
 
     test('Should return ride count from a few days to today', () {
       // TODO: refactoring.
-      //! The map keys used here most be the same to those used in data initialization in the [setUp()] function.
-      var rideCountFrom3Days = rideCountHistory()['2021-01-04'];
-      rideCountFrom3Days += rideCountHistory()['2021-01-03'];
-      rideCountFrom3Days += rideCountHistory()['2021-01-02'];
-      expect(
-          (userRepository as FirebaseUserRepository)
-              .userRideCountFromFewDaysToToday(3),
+      //! The map keys used here most be the same to those used in data
+      //! initialization in the [setUp()] function.
+      var rideCountFrom3Days = rideCountHistory()[dateOfXDaysAgo(0)];
+      rideCountFrom3Days += rideCountHistory()[dateOfXDaysAgo(1)];
+      rideCountFrom3Days += rideCountHistory()[dateOfXDaysAgo(2)];
+      expect(userRepository2.userRideCountFromFewDaysToToday(3),
           equals(rideCountFrom3Days));
     });
 
     test('Should return trophies that the user has recently won', () {
-      //! To anderstand how the letters for the trophies level is choosed for the
-      //! tests, see the [UserRepository] class which has a static
+      //! To anderstand how the letters for the trophies level is choosed for
+      //! the tests, see the [UserRepository] class which has a static
       //! [Map<String, _Trophy>].
       expect(userRepository.getTheRecentlyWonTrophies(''), equals('ABCDEF'));
       expect(userRepository.getTheRecentlyWonTrophies('A'), equals('BCDEF'));
       expect(userRepository.getTheRecentlyWonTrophies('AB'), equals('CDEF'));
       expect(userRepository.getTheRecentlyWonTrophies('DFA'), equals('BCE'));
       expect(userRepository.getTheRecentlyWonTrophies('CDEF'), equals('AB'));
+    });
+
+    test('Should return ride count history', () {
+      final rideCountHistory = userRepository2.getRideCountHistory();
+      final rideCountHistoryFromSharedPref = MockSharedPreferences
+          .data[FirebaseUserRepository.rideCountHistoryKey];
+      expect(
+        rideCountHistory,
+        equals(jsonDecode(rideCountHistoryFromSharedPref)),
+      );
     });
   });
 }

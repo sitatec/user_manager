@@ -39,6 +39,10 @@ abstract class UserRepository {
 
   Future<void> incrmentRideCount(String userId);
 
+  Map<String, dynamic> getRideCountHistory();
+
+  // Future<void> setReview({@required String userId, @required String review});
+
   // static const trophiesNames = {
   //   'A': '7 trajets depuis votre inscription',
   //   'B': '5 trajets en une journée',
