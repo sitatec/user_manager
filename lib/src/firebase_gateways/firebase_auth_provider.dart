@@ -21,7 +21,8 @@ class FirebaseAuthProvider
   static final _singleton = FirebaseAuthProvider._internal();
   @visibleForTesting
   var wrongPasswordCounter = 0;
-  String _lastTryedEmail; //TODO: test
+  @visibleForTesting
+  String lastTryedEmail;
 
   factory FirebaseAuthProvider() => _singleton;
 
@@ -195,40 +196,31 @@ class FirebaseAuthProvider
       case 'account-exists-with-different-credential':
         return const AuthenticationException
             .accountExistsWithDifferentCredential();
-        break;
       case 'invalid-credential':
         return const AuthenticationException.invalidCredential();
-        break;
       case 'invalid-verification-code':
         return const AuthenticationException.invalidVerificationCode();
-        break;
       case 'email-already-in-use':
         return const AuthenticationException.emailAlreadyUsed();
-        break;
       case 'weak-password':
         return const AuthenticationException.weakPassword();
       case 'invalid-email':
         return const AuthenticationException.invalidEmail();
-        break;
       case 'user-disabled':
         return const AuthenticationException.userDisabled();
-        break;
       case 'user-not-found':
         return const AuthenticationException.userNotFound();
-        break;
       case 'wrong-password':
-        if (_lastTryedEmail != exception.email) {
+        if (lastTryedEmail != exception.email) {
           wrongPasswordCounter = 0;
-          _lastTryedEmail = exception.email;
+          lastTryedEmail = exception.email;
         }
         if (++wrongPasswordCounter >= 3) {
           return await _handleManyWrongPassword(exception);
         }
         return const AuthenticationException.wrongPassword();
-        break;
       case 'too-many-requests':
         return const AuthenticationException.tooManyRequests();
-        break;
       default:
         return AuthenticationException.unknown();
     }

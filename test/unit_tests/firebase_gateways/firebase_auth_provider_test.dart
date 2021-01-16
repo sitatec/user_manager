@@ -173,10 +173,11 @@ void main() {
         'Should throw a exception with a exceptionType [accountExistsWithDifferentCredential] if the initial sign in method of user is facebook and the user try to sign in with email and password.',
         () async {
       firebaseAuthProvider.wrongPasswordCounter = 3;
+      firebaseAuthProvider.lastTryedEmail = 'same';
       MockFirebaseAuth.signInMethds = ['facebook.com'];
       expect(
         () async => await firebaseAuthProvider.signInWithEmailAndPassword(
-            email: '', password: ''),
+            email: 'same', password: ''),
         throwsA(
           isA<AuthenticationException>().having(
             (e) => e.exceptionType,
@@ -193,16 +194,17 @@ void main() {
         'Should throw an exception with a message which suggests the user to reset him password.',
         () async {
       firebaseAuthProvider.wrongPasswordCounter = 3;
+      firebaseAuthProvider.lastTryedEmail = 'same';
       MockFirebaseAuth.signInMethds = ['password'];
       expect(
         () async => await firebaseAuthProvider.signInWithEmailAndPassword(
-            email: '', password: ''),
+            email: 'same', password: ''),
         throwsA(
           isA<AuthenticationException>().having(
             (e) => e.message,
             'Exception type',
             equals(
-              'Mot de passe incorrect. Vous avez tenté de vous connecter ${firebaseAuthProvider.wrongPasswordCounter + 1} fois sans succès, si vous avez oublié votre mot de passe veuillez appuyer sur ”Mot de passe oublié ?”  juste en dessous à droite du bouton “Valider” pour le récupérer.',
+              'Mot de passe incorrect. Vous avez tenté de vous connecter ${firebaseAuthProvider.wrongPasswordCounter + 1} fois avec la même adresse email sans succès, si vous avez oublié votre mot de passe veuillez appuyer sur ”Mot de passe oublié ?”  juste en dessous à droite du bouton “Valider” pour le récupérer.',
             ), //! [wrongPasswordCount] will be incremented when signing in.
           ),
         ),
