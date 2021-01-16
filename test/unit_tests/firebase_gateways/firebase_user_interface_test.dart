@@ -57,11 +57,26 @@ void main() {
     expect(user.formatedName, equals('Berete'));
   });
 
-  group('Additional data:', () {
+  group('Errors handling :', () {
     setUp(() {
       MockSharedPreferences.enabled = true;
+      MockSharedPreferences.throwException = true;
     });
-    test('Should get reviews', () {});
+    tearDownAll(() {
+      MockSharedPreferences.enabled = false;
+      MockSharedPreferences.throwException = false;
+    });
+
+    test(
+        "The values of user's additional data should contain 'Erreur' when a exception is thrown.",
+        () async {
+      initUser();
+      await Future.delayed(Duration.zero);
+      expect(user.rideCount, equals('Erreur'));
+      expect(user.trophies, equals('Erreur'));
+      expect(user.rideCount, equals('Erreur'));
+      expect(user.rideCountHistory.keys, contains('Erreur'));
+    });
   });
 
   group('Ride count history handling: ', () {
@@ -112,8 +127,8 @@ void main() {
       initUser();
       // Wait for end of user Initialization.
       await Future.delayed(Duration.zero);
-      //! [user.rideCountHistory] also contains Hier and Avant-hier keys which
-      //! is initialized in the [FirebaseUserInterface] constructor.
+      //! [user.rideCountHistory] also contains 'Hier' and 'Avant-hier' keys
+      //! which is initialized in the [FirebaseUserInterface] class.
       expect(user.rideCountHistory.keys, contains("Aujourd'hui"));
       expect(user.rideCountHistory.values, contains(0));
     });

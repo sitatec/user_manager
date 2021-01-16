@@ -14,11 +14,14 @@ class FirebaseAuthProvider
     with ChangeNotifier
     implements AuthenticationProvider {
   firebase_auth.FirebaseAuth _firebaseAuth;
-  AuthState _state = AuthState.uninitialized;
+  AuthState _currentAuthState = AuthState.uninitialized;
   final _authStateStreamController = StreamController<AuthState>.broadcast();
   final UserRepository _userRepository;
   User _user;
   static final _singleton = FirebaseAuthProvider._internal();
+  @visibleForTesting
+  var wrongPasswordCounter = 0;
+  String _lastTryedEmail; //TODO: test
 
   factory FirebaseAuthProvider() => _singleton;
 
@@ -27,7 +30,7 @@ class FirebaseAuthProvider
         _firebaseAuth = firebase_auth.FirebaseAuth.instance {
     _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
     _authStateStreamController.onListen =
-        () => _authStateStreamController.sink.add(_state);
+        () => _authStateStreamController.sink.add(_currentAuthState);
   }
 
   @visibleForTesting
@@ -35,11 +38,11 @@ class FirebaseAuthProvider
       : assert(_userRepository != null && _firebaseAuth != null) {
     _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
     _authStateStreamController.onListen =
-        () => _authStateStreamController.sink.add(_state);
+        () => _authStateStreamController.sink.add(_currentAuthState);
   }
 
   @override
-  AuthState get authState => _state;
+  AuthState get authState => _currentAuthState;
   @override
   User get user => _user;
   @override
@@ -68,6 +71,7 @@ class FirebaseAuthProvider
           userRepository: _userRepository,
         );
         _switchState(AuthState.authenticated);
+        wrongPasswordCounter = 0;
       }
     } catch (e) {
       //TODO: rapport error.
@@ -94,7 +98,7 @@ class FirebaseAuthProvider
         await _userRepository.initAdditionalData(userCredential.user.uid);
       }
     } catch (e) {
-      throw _handleException(e);
+      throw await _handleException(e);
     }
   }
 
@@ -109,8 +113,14 @@ class FirebaseAuthProvider
         email: email,
         password: password,
       );
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      throw await _handleException(firebase_auth.FirebaseAuthException(
+        email: email,
+        message: e.message,
+        code: e.code,
+      ));
     } catch (e) {
-      throw _handleException(e);
+      throw await _handleException(e);
     }
   }
 
@@ -129,7 +139,7 @@ class FirebaseAuthProvider
       await userCredential.user
           .updateProfile(displayName: '$firstName $lastName');
     } catch (e) {
-      throw _handleException(e);
+      throw await _handleException(e);
     }
   }
 
@@ -139,7 +149,7 @@ class FirebaseAuthProvider
       //TODO: tests sendPasswordResetEmail.
       await _firebaseAuth.sendPasswordResetEmail(email: email);
     } catch (e) {
-      throw _handleException(e);
+      throw await _handleException(e);
     }
   }
 
@@ -148,12 +158,13 @@ class FirebaseAuthProvider
     try {
       await _firebaseAuth.signOut();
     } catch (e) {
-      throw _handleException(e);
+      throw await _handleException(e);
     }
   }
 
   void _switchState(AuthState targetState) {
-    _state = targetState;
+    if (_currentAuthState == targetState) return null;
+    _currentAuthState = targetState;
     if (targetState == AuthState.authenticated ||
         targetState == AuthState.unauthenticated) {
       _authStateStreamController.sink.add(targetState);
@@ -161,12 +172,12 @@ class FirebaseAuthProvider
     notifyListeners();
   }
 
-  dynamic _handleException(dynamic exception) {
+  Future _handleException(dynamic exception) async {
     if (_firebaseAuth.currentUser == null) {
       _switchState(AuthState.unauthenticated);
     }
     if (exception is firebase_auth.FirebaseAuthException) {
-      return _convertFirebaseAuthException(exception);
+      return await _convertFirebaseAuthException(exception);
     }
     if (exception is UserDataAccessException) {
       return exception; // <==> rethrow
@@ -178,8 +189,8 @@ class FirebaseAuthProvider
     return const AuthenticationException.unknown();
   }
 
-  AuthenticationException _convertFirebaseAuthException(
-      firebase_auth.FirebaseAuthException exception) {
+  Future<AuthenticationException> _convertFirebaseAuthException(
+      firebase_auth.FirebaseAuthException exception) async {
     switch (exception.code) {
       case 'account-exists-with-different-credential':
         return const AuthenticationException
@@ -206,6 +217,13 @@ class FirebaseAuthProvider
         return const AuthenticationException.userNotFound();
         break;
       case 'wrong-password':
+        if (_lastTryedEmail != exception.email) {
+          wrongPasswordCounter = 0;
+          _lastTryedEmail = exception.email;
+        }
+        if (++wrongPasswordCounter >= 3) {
+          return await _handleManyWrongPassword(exception);
+        }
         return const AuthenticationException.wrongPassword();
         break;
       case 'too-many-requests':
@@ -214,5 +232,29 @@ class FirebaseAuthProvider
       default:
         return AuthenticationException.unknown();
     }
+  }
+
+  Future<AuthenticationException> _handleManyWrongPassword(
+    firebase_auth.FirebaseAuthException exception,
+  ) async {
+    final userSignInMethods = await _firebaseAuth
+        .fetchSignInMethodsForEmail(exception.email)
+        .catchError((_) => []);
+    if (userSignInMethods.first == 'facebook.com') {
+      return AuthenticationException(
+        exceptionType:
+            AuthenticationExceptionType.accountExistsWithDifferentCredential,
+        message:
+            "L'adresse email \"${exception.email}\" est déjà liée à un compte facebook que vous avez utilisé auparavant pour vous connecter. Veuillez appuyer sur le bouton ci-dessous pour vous connecter à l’aide de votre compte facebook.",
+      );
+    }
+    if (userSignInMethods.first == 'password') {
+      return AuthenticationException(
+        exceptionType: AuthenticationExceptionType.wrongPassword,
+        message:
+            'Mot de passe incorrect. Vous avez tenté de vous connecter $wrongPasswordCounter fois avec la même adresse email sans succès, si vous avez oublié votre mot de passe veuillez appuyer sur ”Mot de passe oublié ?”  juste en dessous à droite du bouton “Valider” pour le récupérer.',
+      );
+    }
+    return const AuthenticationException.wrongPassword();
   }
 }

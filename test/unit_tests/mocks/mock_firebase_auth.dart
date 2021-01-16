@@ -8,8 +8,9 @@ import 'package:mockito/mockito.dart';
 class MockFirebaseAuth extends Mock implements FirebaseAuth {
   final stateChangedStreamController = StreamController<User>();
   static User _currentUser;
-  static bool isExceptionTest = false;
+  static bool mustThrowsException = false;
   static String errorCode = '';
+  static var signInMethds = <String>[];
 
   MockFirebaseAuth({signedIn = false}) {
     if (signedIn) {
@@ -26,6 +27,10 @@ class MockFirebaseAuth extends Mock implements FirebaseAuth {
   Future<UserCredential> signInWithCredential(AuthCredential credential) {
     return _fakeSignIn();
   }
+
+  @override
+  Future<List<String>> fetchSignInMethodsForEmail(String email) async =>
+      signInMethds;
 
   @override
   Future<UserCredential> createUserWithEmailAndPassword({
@@ -60,7 +65,7 @@ class MockFirebaseAuth extends Mock implements FirebaseAuth {
   }
 
   Future<UserCredential> _fakeSignIn({bool isAnonymous = false}) {
-    if (isExceptionTest) {
+    if (mustThrowsException) {
       throw FirebaseAuthException(message: 'null', code: errorCode);
     }
     final userCredential = MockUserCredential(isAnonymous: isAnonymous);

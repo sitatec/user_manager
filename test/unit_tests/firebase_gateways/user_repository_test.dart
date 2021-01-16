@@ -101,9 +101,11 @@ void main() {
     // Driver infos such as online, current location...
     const coordinates = {'latitude': 14.463742, 'longitude': 11.631249};
     const otherCoordinates = {'latitude': 16.403942, 'longitude': 10.038241};
+    const city = 'city';
     MockFirebaseDatabase.instance
         .reference()
         .child(FirebaseUserRepository.onlineNode)
+        .child(city)
         .set({
       userUid: '${coordinates['latitude']}-${coordinates['longitude']}',
       newUserUid:
@@ -112,22 +114,26 @@ void main() {
     test(
         'Should return the coordinates of user which uid is passed in parameter',
         () async {
-      final _coordinates = await userRepository.getLocation(userUid);
+      final _coordinates =
+          await userRepository.getLocation(userUid: userUid, city: city);
       expect(_coordinates, equals(coordinates));
-      final _othercoordinates = await userRepository.getLocation(newUserUid);
+      final _othercoordinates =
+          await userRepository.getLocation(userUid: newUserUid, city: city);
       expect(_othercoordinates, equals(otherCoordinates));
     });
     test(
         'Should returns null when nonexistent user uid is passed in parameter.',
         () async {
-      final _othercoordinates = await userRepository.getLocation('fakeUid');
+      final _othercoordinates =
+          await userRepository.getLocation(userUid: 'fakeUid', city: city);
       expect(_othercoordinates, isNull);
     });
 
     test(
         'Should return a stream of coordinates of user whose uid is passed in parameter',
         () async {
-      final _coordinatesStream = userRepository.getLocationStream(userUid);
+      final _coordinatesStream =
+          userRepository.getLocationStream(userUid: userUid, city: city);
       expect(_coordinatesStream, isA<Stream<Map<String, double>>>());
       expect(await _coordinatesStream.first, equals(coordinates));
     });
@@ -150,7 +156,7 @@ void main() {
     tearDown(() {
       MockSharedPreferences.throwException = false;
       MockSharedPreferences.thrownExceptionCount = 0;
-      MockSharedPreferences.writingDataWillFail = false;
+      MockSharedPreferences.writingDataMustFail = false;
     });
 
     test('Should not get remote data if local data is available', () async {

@@ -12,7 +12,7 @@ class FirebaseUserRepository implements UserRepository {
   SharedPreferences _sharedPreferences;
   CollectionReference _additionalDataReference;
   final FirebaseFirestore _firebaseFirestore;
-  final DatabaseReference _realTimeDatabaseReference;
+  final DatabaseReference _realTimeDatabase;
   static const trophiesKey = 't';
   static const totalRideCountKey = 'r';
   static const initialAdditionalData = {
@@ -32,7 +32,7 @@ class FirebaseUserRepository implements UserRepository {
   factory FirebaseUserRepository() => _singleton;
 
   FirebaseUserRepository._internal()
-      : _realTimeDatabaseReference = FirebaseDatabase.instance.reference(),
+      : _realTimeDatabase = FirebaseDatabase.instance.reference(),
         _firebaseFirestore = FirebaseFirestore.instance {
     SharedPreferences.getInstance().then((value) => _sharedPreferences = value);
     _setupFirestore();
@@ -43,7 +43,7 @@ class FirebaseUserRepository implements UserRepository {
     @required FirebaseDatabase realTimeDatabase,
     @required FirebaseFirestore firestoreDatabase,
     @required SharedPreferences sharedPreferences,
-  })  : _realTimeDatabaseReference = realTimeDatabase?.reference() ??
+  })  : _realTimeDatabase = realTimeDatabase?.reference() ??
             FirebaseDatabase.instance.reference(),
         _firebaseFirestore = firestoreDatabase ?? FirebaseFirestore.instance {
     if (sharedPreferences == null) {
@@ -72,6 +72,7 @@ class FirebaseUserRepository implements UserRepository {
       await _updateCacheData(documentData).catchError((_) => null);
       return documentData;
     } catch (e) {
+      // TODO rapport
       throw UserDataAccessException.unknown();
     }
   }
@@ -86,17 +87,18 @@ class FirebaseUserRepository implements UserRepository {
     final dataJson = json.encode(data);
     final dataIsSuccessfullySet =
         await _sharedPreferences.setString(usersAdditionalDataKey, dataJson);
-    if (!dataIsSuccessfullySet) {
+    if (!(dataIsSuccessfullySet ?? false)) {
       // delete local data if it is not up to date, and retry if its fail.
       if (!(await _sharedPreferences.clear())) await _sharedPreferences.clear();
     }
   }
 
   @override
-  Future<Map<String, double>> getLocation(String uid) async {
+  Future<Map<String, double>> getLocation(
+      {@required String city, @required String userUid}) async {
     try {
       final coordinates =
-          await _realTimeDatabaseReference.child(onlineNode).child(uid).once();
+          await _realTimeDatabase.child('$onlineNode/$city/$userUid').once();
       if (coordinates.value == null) return null;
       return _coordinatesStringToMap(coordinates.value);
     } catch (e) {
@@ -114,7 +116,7 @@ class FirebaseUserRepository implements UserRepository {
 
   @override
   Future<void> setLocation({
-    String town,
+    String city,
     String userUid,
     Map<String, double> gpsCoordinates,
   }) {
@@ -127,10 +129,11 @@ class FirebaseUserRepository implements UserRepository {
   }
 
   @override
-  Stream<Map<String, double>> getLocationStream(String userUid) async* {
+  Stream<Map<String, double>> getLocationStream(
+      {@required String city, @required String userUid}) async* {
     try {
       final locationStream =
-          _realTimeDatabaseReference.child('$onlineNode/$userUid').onValue;
+          _realTimeDatabase.child('$onlineNode/$city/$userUid').onValue;
       await for (var event in locationStream) {
         yield _coordinatesStringToMap(event.snapshot.value);
       }
@@ -182,7 +185,7 @@ class FirebaseUserRepository implements UserRepository {
 
   @override
   Future<void> updateLocation(
-      {String town, String userUid, String gpsCoordinates}) {
+      {String city, String userUid, String gpsCoordinates}) {
     // TODO: implement updateLocation
     throw UnimplementedError();
   }
@@ -235,15 +238,19 @@ class FirebaseUserRepository implements UserRepository {
   String getTheRecentlyWonTrophies(String userTrophies) {
     var trophiesWon = '';
     var userRideCountSinceXDays;
-    UserRepository.trophiesList.forEach((trophyLevel, trophy) async {
-      userRideCountSinceXDays =
-          userRideCountFromFewDaysToToday(trophy.timeLimit?.inDays);
-      if (!userTrophies.contains(trophyLevel) &&
-          userRideCountSinceXDays >= trophy.minRideCount) {
-        trophiesWon += trophyLevel;
-      }
-    });
-    return trophiesWon;
+    try {
+      UserRepository.trophiesList.forEach((trophyLevel, trophy) async {
+        userRideCountSinceXDays =
+            userRideCountFromFewDaysToToday(trophy.timeLimit?.inDays);
+        if (!userTrophies.contains(trophyLevel) &&
+            userRideCountSinceXDays >= trophy.minRideCount) {
+          trophiesWon += trophyLevel;
+        }
+      });
+      return trophiesWon;
+    } catch (_) {
+      throw UserDataAccessException.unknown();
+    }
   }
 
   @visibleForTesting

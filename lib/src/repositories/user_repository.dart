@@ -14,22 +14,24 @@ abstract class UserRepository {
 
   /// Updates the [location] of the user
   Future<void> updateLocation(
-      {@required String town,
+      {@required String city,
       @required String userUid,
       @required String gpsCoordinates});
 
   /// Returns The location of user which unique Id is passed in [userUid] parameter
-  Future<Map<String, double>> getLocation(String userUid);
+  Future<Map<String, double>> getLocation(
+      {@required String city, @required String userUid});
 
   /// Returns The location stream of user which unique Id is passed in [userUid] parameter
-  Stream<Map<String, double>> getLocationStream(String userUid);
+  Stream<Map<String, double>> getLocationStream(
+      {@required String city, @required String userUid});
 
   /// Initializes the user additionale data .
   Future<void> initAdditionalData(String userUid);
 
   /// Sets the user [location].
   Future<void> setLocation(
-      {@required String town,
+      {@required String city,
       @required String userUid,
       @required Map<String, double> gpsCoordinates});
 

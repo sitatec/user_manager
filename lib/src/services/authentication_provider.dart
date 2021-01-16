@@ -81,5 +81,5 @@ enum AuthState {
   authenticated,
   authenticating,
   unauthenticated,
-  registering
+  registering,
 }

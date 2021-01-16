@@ -5,7 +5,7 @@ class MockSharedPreferences extends Mock implements SharedPreferences {
   static var data = <String, dynamic>{};
   static var enabled = false;
   static var throwException = false;
-  static var writingDataWillFail = false;
+  static var writingDataMustFail = false;
   static var thrownExceptionCount = 0;
 
   @override
@@ -28,18 +28,18 @@ class MockSharedPreferences extends Mock implements SharedPreferences {
   String getString(String key) => get(key) as String;
 
   @override
+  int getInt(String key) => get(key) as int;
+
+  @override
   Future<bool> setString(String key, String value) {
     if (!enabled) return null;
     if (throwException) {
       thrownExceptionCount++;
       throw Exception();
-    } else if (writingDataWillFail) return Future.value(false);
+    } else if (writingDataMustFail) return Future.value(false);
     data[key] = value;
     return Future.value(true);
   }
-
-  @override
-  int getInt(String key) => get(key) as int;
 
   @override
   Future<bool> setInt(String key, int value) {
@@ -47,7 +47,7 @@ class MockSharedPreferences extends Mock implements SharedPreferences {
     if (throwException) {
       thrownExceptionCount++;
       throw Exception();
-    } else if (writingDataWillFail) return Future.value(false);
+    } else if (writingDataMustFail) return Future.value(false);
     data[key] = value;
     return Future.value(true);
   }

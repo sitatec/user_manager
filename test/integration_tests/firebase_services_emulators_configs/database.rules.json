@@ -7,7 +7,7 @@
       ".write": "auth != null && auth.email == 'sita.berete.3@gmail.com'"
     },
     "online": {
-      "$town": {
+      "$city": {
         "$uid": {
           ".read": "auth != null",
           ".write": "auth != null && auth.uid == $uid"

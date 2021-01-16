@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:cloud_firestore_mocks/cloud_firestore_mocks.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_database_mocks/firebase_database_mocks.dart';
@@ -68,7 +66,7 @@ void main() {
         authStateLog.add(firebaseAuthProvider.authState);
       });
       await firebaseAuthProvider.signInWithEmailAndPassword(
-        email: 'te@tes.t',
+        email: 'te@tes.tt',
         password: 'password',
       );
       await Future.delayed(Duration.zero); // wait for next event loop
@@ -126,6 +124,7 @@ void main() {
       expect(
           firebaseAuthProvider.user.userName, equals('$firstName $lastName'));
     });
+
     // TODO test Facebook sign in sign out.
     // test('Sign in with facebook login', () {
     //
@@ -133,6 +132,88 @@ void main() {
     // });
     // TODO : test password reset
   });
+
+/******************************************************************************/
+/****************************** [ New Group ] *********************************/
+/******************************************************************************/
+
+  group('handling Many wrong password', () {
+    setUp(() {
+      MockFirebaseAuth.mustThrowsException = true;
+      MockFirebaseAuth.errorCode = 'wrong-password';
+    });
+    test('Should increment wrong password counter', () async {
+      expect(firebaseAuthProvider.wrongPasswordCounter, isZero);
+      expect(
+          () async => await firebaseAuthProvider.signInWithEmailAndPassword(
+              email: 'test@gjs.sg', password: 'password'),
+          throwsException);
+      expect(firebaseAuthProvider.wrongPasswordCounter, equals(1));
+      // second time
+      expect(
+          () async => await firebaseAuthProvider.signInWithEmailAndPassword(
+              email: 'test@gjs.sg', password: 'password'),
+          throwsException);
+      expect(firebaseAuthProvider.wrongPasswordCounter, equals(2));
+    });
+
+    test(
+        'Should reset wrong password counter if user is successfully signed in',
+        () async {
+      MockFirebaseAuth.mustThrowsException = false;
+      firebaseAuthProvider.wrongPasswordCounter = 4;
+      expect(firebaseAuthProvider.wrongPasswordCounter, equals(4));
+      await firebaseAuthProvider.signInWithEmailAndPassword(
+          email: '', password: '');
+      expect(firebaseAuthProvider.user, isA<User>());
+      expect(firebaseAuthProvider.wrongPasswordCounter, isZero);
+    });
+
+    test(
+        'Should throw a exception with a exceptionType [accountExistsWithDifferentCredential] if the initial sign in method of user is facebook and the user try to sign in with email and password.',
+        () async {
+      firebaseAuthProvider.wrongPasswordCounter = 3;
+      MockFirebaseAuth.signInMethds = ['facebook.com'];
+      expect(
+        () async => await firebaseAuthProvider.signInWithEmailAndPassword(
+            email: '', password: ''),
+        throwsA(
+          isA<AuthenticationException>().having(
+            (e) => e.exceptionType,
+            'Exception type',
+            equals(
+              AuthenticationExceptionType.accountExistsWithDifferentCredential,
+            ),
+          ),
+        ),
+      );
+    });
+
+    test(
+        'Should throw an exception with a message which suggests the user to reset him password.',
+        () async {
+      firebaseAuthProvider.wrongPasswordCounter = 3;
+      MockFirebaseAuth.signInMethds = ['password'];
+      expect(
+        () async => await firebaseAuthProvider.signInWithEmailAndPassword(
+            email: '', password: ''),
+        throwsA(
+          isA<AuthenticationException>().having(
+            (e) => e.message,
+            'Exception type',
+            equals(
+              'Mot de passe incorrect. Vous avez tenté de vous connecter ${firebaseAuthProvider.wrongPasswordCounter + 1} fois sans succès, si vous avez oublié votre mot de passe veuillez appuyer sur ”Mot de passe oublié ?”  juste en dessous à droite du bouton “Valider” pour le récupérer.',
+            ), //! [wrongPasswordCount] will be incremented when signing in.
+          ),
+        ),
+      );
+    });
+  });
+
+/******************************************************************************/
+/****************************** [ New Group ] *********************************/
+/******************************************************************************/
+
   group('Should convert [FirebaseAuthException] with error code', () {
     final methodsToTest = {
       'signInWithEmailAndPassword': () async =>
@@ -148,11 +229,11 @@ void main() {
           ),
     };
     setUp(() {
-      MockFirebaseAuth.isExceptionTest =
-          true; // if true any method call on [MockFirebaseAuth] will throw a exception.
+      // if true any method call on [MockFirebaseAuth] will throw a exception.
+      MockFirebaseAuth.mustThrowsException = true;
     });
     tearDownAll(() {
-      MockFirebaseAuth.isExceptionTest = false;
+      MockFirebaseAuth.mustThrowsException = false;
     });
     methodsToTest.forEach((methodName, method) {
       final errorCodeMatcher = errorCodeMatcherForEachMethod[methodName];

@@ -15,7 +15,6 @@ class FirebaseUserInterface implements User {
   UserRepository _userRepository;
   String _formatedName;
   Map<String, dynamic> _rideCountHistory;
-  Map<String, dynamic> _reviews;
   FirebaseUserInterface({
     @required this.firebaseUser,
     @required UserRepository userRepository,
@@ -80,12 +79,17 @@ class FirebaseUserInterface implements User {
   }
 
   Map<String, dynamic> _getUserInterfaceFriendlyHistory() {
-    final rideCountHistory = _userRepository.getRideCountHistory();
-    _replaceWithUserFriendlyKey(
-      originalData: rideCountHistory,
-      keyMatcher: _getThe3LastDaysUserFriendlyHistoryKey(),
-    );
-    return rideCountHistory;
+    try {
+      final rideCountHistory = _userRepository.getRideCountHistory();
+      _replaceWithUserFriendlyKey(
+        originalData: rideCountHistory,
+        keyMatcher: _getThe3LastDaysUserFriendlyHistoryKey(),
+      );
+      return rideCountHistory;
+    } catch (_) {
+      // TODO: implement rapport
+      return {'Erreur': ''};
+    }
   }
 
   void _replaceWithUserFriendlyKey({
