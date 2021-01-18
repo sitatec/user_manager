@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
-import '../entities/user.dart';
-import '../firebase_gateways/firebase_auth_provider.dart';
+
+import 'entities/user.dart';
+import 'firebase_gateways/firebase_auth_provider.dart';
 
 /// {@template auth_provider}
 /// An authentication APIs provider (Sign in, Sign out, register, reset password...)

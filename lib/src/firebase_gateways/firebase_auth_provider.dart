@@ -5,8 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import '../exceptions/user_data_access_exception.dart';
 import '../exceptions/authentication_exception.dart';
-import '../services/authentication_provider.dart';
-import '../repositories/user_repository.dart';
+import '../authentication_provider.dart';
+import '../repositories/user_data_repository.dart';
 import '../entities/user.dart';
 import 'firebase_user_interface.dart';
 
@@ -16,7 +16,7 @@ class FirebaseAuthProvider
   firebase_auth.FirebaseAuth _firebaseAuth;
   AuthState _currentAuthState = AuthState.uninitialized;
   final _authStateStreamController = StreamController<AuthState>.broadcast();
-  final UserRepository _userRepository;
+  final UserDataRepository _userDataRepository;
   User _user;
   static final _singleton = FirebaseAuthProvider._internal();
   @visibleForTesting
@@ -27,7 +27,7 @@ class FirebaseAuthProvider
   factory FirebaseAuthProvider() => _singleton;
 
   FirebaseAuthProvider._internal()
-      : _userRepository = UserRepository.instance,
+      : _userDataRepository = UserDataRepository.instance,
         _firebaseAuth = firebase_auth.FirebaseAuth.instance {
     _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
     _authStateStreamController.onListen =
@@ -35,8 +35,8 @@ class FirebaseAuthProvider
   }
 
   @visibleForTesting
-  FirebaseAuthProvider.forTest(this._userRepository, this._firebaseAuth)
-      : assert(_userRepository != null && _firebaseAuth != null) {
+  FirebaseAuthProvider.forTest(this._userDataRepository, this._firebaseAuth)
+      : assert(_userDataRepository != null && _firebaseAuth != null) {
     _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
     _authStateStreamController.onListen =
         () => _authStateStreamController.sink.add(_currentAuthState);
@@ -69,7 +69,7 @@ class FirebaseAuthProvider
         }
         _user = FirebaseUserInterface(
           firebaseUser: firebaseUser,
-          userRepository: _userRepository,
+          userDataRepository: _userDataRepository,
         );
         _switchState(AuthState.authenticated);
         wrongPasswordCounter = 0;
@@ -96,7 +96,7 @@ class FirebaseAuthProvider
       final userCredential =
           await _firebaseAuth.signInWithCredential(facebookOAuthCredential);
       if (userCredential.additionalUserInfo.isNewUser) {
-        await _userRepository.initAdditionalData(userCredential.user.uid);
+        await _userDataRepository.initAdditionalData(userCredential.user.uid);
       }
     } catch (e) {
       throw await _handleException(e);
@@ -136,7 +136,7 @@ class FirebaseAuthProvider
       _switchState(AuthState.registering);
       final userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
           email: email, password: password);
-      await _userRepository.initAdditionalData(userCredential.user.uid);
+      await _userDataRepository.initAdditionalData(userCredential.user.uid);
       await userCredential.user
           .updateProfile(displayName: '$firstName $lastName');
     } catch (e) {

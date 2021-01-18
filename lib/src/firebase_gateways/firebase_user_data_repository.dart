@@ -1,18 +1,17 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../utils/utils.dart';
+import '../utils/helpers.dart';
 import '../exceptions/user_data_access_exception.dart';
-import '../repositories/user_repository.dart';
+import '../repositories/user_data_repository.dart';
 
-class FirebaseUserRepository implements UserRepository {
+// TODO refactor : new classes (CacheDataManager).
+class FirebaseUserDataRepository implements UserDataRepository {
   SharedPreferences _sharedPreferences;
   CollectionReference _additionalDataReference;
   final FirebaseFirestore _firebaseFirestore;
-  final DatabaseReference _realTimeDatabase;
   static const trophiesKey = 't';
   static const totalRideCountKey = 'r';
   static const initialAdditionalData = {
@@ -20,32 +19,26 @@ class FirebaseUserRepository implements UserRepository {
     totalRideCountKey: 0,
   };
   @visibleForTesting
-  static const onlineNode = 'online';
-  @visibleForTesting
   static const usersAdditionalDataKey = 'users_additional_data';
   @visibleForTesting
   static const rideCountHistoryKey = 'ride_count_history';
 
-  static final FirebaseUserRepository _singleton =
-      FirebaseUserRepository._internal();
+  static final FirebaseUserDataRepository _singleton =
+      FirebaseUserDataRepository._internal();
 
-  factory FirebaseUserRepository() => _singleton;
+  factory FirebaseUserDataRepository() => _singleton;
 
-  FirebaseUserRepository._internal()
-      : _realTimeDatabase = FirebaseDatabase.instance.reference(),
-        _firebaseFirestore = FirebaseFirestore.instance {
+  FirebaseUserDataRepository._internal()
+      : _firebaseFirestore = FirebaseFirestore.instance {
     SharedPreferences.getInstance().then((value) => _sharedPreferences = value);
     _setupFirestore();
   }
 
   @visibleForTesting
-  FirebaseUserRepository.forTest({
-    @required FirebaseDatabase realTimeDatabase,
+  FirebaseUserDataRepository.forTest({
     @required FirebaseFirestore firestoreDatabase,
     @required SharedPreferences sharedPreferences,
-  })  : _realTimeDatabase = realTimeDatabase?.reference() ??
-            FirebaseDatabase.instance.reference(),
-        _firebaseFirestore = firestoreDatabase ?? FirebaseFirestore.instance {
+  }) : _firebaseFirestore = firestoreDatabase ?? FirebaseFirestore.instance {
     if (sharedPreferences == null) {
       SharedPreferences.getInstance()
           .then((value) => _sharedPreferences = value);
@@ -71,8 +64,7 @@ class FirebaseUserRepository implements UserRepository {
       final documentData = document.data();
       await _updateCacheData(documentData).catchError((_) => null);
       return documentData;
-    } catch (e) {
-      // TODO rapport
+    } on FirebaseException {
       throw UserDataAccessException.unknown();
     }
   }
@@ -94,60 +86,11 @@ class FirebaseUserRepository implements UserRepository {
   }
 
   @override
-  Future<Map<String, double>> getLocation(
-      {@required String city, @required String userUid}) async {
-    try {
-      final coordinates =
-          await _realTimeDatabase.child('$onlineNode/$city/$userUid').once();
-      if (coordinates.value == null) return null;
-      return _coordinatesStringToMap(coordinates.value);
-    } catch (e) {
-      throw UserDataAccessException.unknown();
-    }
-  }
-
-  Map<String, double> _coordinatesStringToMap(String coordinates) {
-    final coordinatesList = coordinates.split('-');
-    return {
-      'latitude': double.tryParse(coordinatesList.first),
-      'longitude': double.tryParse(coordinatesList.last)
-    };
-  }
-
-  @override
-  Future<void> setLocation({
-    String city,
-    String userUid,
-    Map<String, double> gpsCoordinates,
-  }) {
-    // TODO: implement setLocation
-    throw UnimplementedError();
-  }
-
-  String _coordinatesMapToString(Map<String, double> coordinates) {
-    return '${coordinates["latitude"]}-${coordinates["longitude"]}';
-  }
-
-  @override
-  Stream<Map<String, double>> getLocationStream(
-      {@required String city, @required String userUid}) async* {
-    try {
-      final locationStream =
-          _realTimeDatabase.child('$onlineNode/$city/$userUid').onValue;
-      await for (var event in locationStream) {
-        yield _coordinatesStringToMap(event.snapshot.value);
-      }
-    } catch (e) {
-      throw UserDataAccessException.unknown();
-    }
-  }
-
-  @override
   Future<void> initAdditionalData(String userUid) async {
     try {
       await _updateCacheData(initialAdditionalData).catchError((_) => null);
       await _additionalDataReference.doc(userUid).set(initialAdditionalData);
-    } catch (e) {
+    } on FirebaseException {
       throw UserDataAccessException.unknown();
     }
   }
@@ -160,7 +103,7 @@ class FirebaseUserRepository implements UserRepository {
     try {
       await _updateCacheData(data).catchError((_) => null);
       await _additionalDataReference.doc(userUid).update(data);
-    } catch (e) {
+    } on FirebaseException {
       throw UserDataAccessException.unknown();
     }
   }
@@ -172,22 +115,9 @@ class FirebaseUserRepository implements UserRepository {
       additionalData[totalRideCountKey]++;
       await updateAdditionalData(data: additionalData, userUid: userId);
       await incrementTodaysRideCount();
-    } catch (e) {
+    } on FirebaseException {
       throw UserDataAccessException.unknown();
     }
-  }
-
-  @override
-  Future<void> deleteLocation(String userUid) {
-    // TODO: implement deleteLocation
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<void> updateLocation(
-      {String city, String userUid, String gpsCoordinates}) {
-    // TODO: implement updateLocation
-    throw UnimplementedError();
   }
 
   @visibleForTesting
@@ -239,7 +169,7 @@ class FirebaseUserRepository implements UserRepository {
     var trophiesWon = '';
     var userRideCountSinceXDays;
     try {
-      UserRepository.trophiesList.forEach((trophyLevel, trophy) async {
+      UserDataRepository.trophiesList.forEach((trophyLevel, trophy) async {
         userRideCountSinceXDays =
             userRideCountFromFewDaysToToday(trophy.timeLimit?.inDays);
         if (!userTrophies.contains(trophyLevel) &&
@@ -248,7 +178,7 @@ class FirebaseUserRepository implements UserRepository {
         }
       });
       return trophiesWon;
-    } catch (_) {
+    } on FirebaseException {
       throw UserDataAccessException.unknown();
     }
   }
@@ -278,16 +208,3 @@ class FirebaseUserRepository implements UserRepository {
   //   _additionalDataReference.doc('$userId/$reviewsKey').
   // }
 }
-
-// TODO: implement better exception handler.
-
-// dynamic _convertException(dynamic exception) {
-//   switch (exception.runtimeType) {
-//     case DatabaseError:
-//     case FirebaseException:
-//       return UserDataAccessException.unknown();
-//       break;
-//     default:
-//       return exception; // <=> rethrow
-//   }
-// }

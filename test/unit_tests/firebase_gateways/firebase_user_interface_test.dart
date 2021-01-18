@@ -2,12 +2,11 @@ import 'dart:convert';
 
 import 'package:cloud_firestore_mocks/cloud_firestore_mocks.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database_mocks/firebase_database_mocks.dart';
 import 'package:mockito/mockito.dart';
 import 'package:test/test.dart';
-import 'package:user_manager/src/firebase_gateways/firebase_user_repository.dart';
+import 'package:user_manager/src/firebase_gateways/firebase_user_data_repository.dart';
 import 'package:user_manager/src/firebase_gateways/firebase_user_interface.dart';
-import 'package:user_manager/src/utils/utils.dart';
+import 'package:user_manager/src/utils/helpers.dart';
 
 import '../mocks/mock_shared_preferences.dart';
 
@@ -20,18 +19,18 @@ class MockFirebaseUser extends Mock implements User {
 }
 
 void main() {
-  FirebaseUserRepository userRepository;
+  FirebaseUserDataRepository userDataRepository;
   FirebaseUserInterface user;
   //! in some case [user] most be initialized manualy by colling [initUser]
   //! because some initialization is done in the [FirebaseUserInterface] constructor.
   void initUser() {
-    userRepository = FirebaseUserRepository.forTest(
-        firestoreDatabase: MockFirestoreInstance(),
-        sharedPreferences: MockSharedPreferences(),
-        realTimeDatabase: MockFirebaseDatabase.instance);
+    userDataRepository = FirebaseUserDataRepository.forTest(
+      firestoreDatabase: MockFirestoreInstance(),
+      sharedPreferences: MockSharedPreferences(),
+    );
     user = FirebaseUserInterface(
       firebaseUser: MockFirebaseUser(),
-      userRepository: userRepository,
+      userDataRepository: userDataRepository,
     );
   }
 
@@ -92,10 +91,11 @@ void main() {
 
     setUp(() {
       MockSharedPreferences.enabled = true;
-      MockSharedPreferences.data[FirebaseUserRepository.rideCountHistoryKey] =
+      MockSharedPreferences
+              .data[FirebaseUserDataRepository.rideCountHistoryKey] =
           json.encode(fakeInitialHistory);
-      // MockSharedPreferences.data[FirebaseUserRepository.totalRideCountKey] = 20;
-      // MockSharedPreferences.data[FirebaseUserRepository.trophiesKey] = 'A3';
+      // MockSharedPreferences.data[FirebaseUserDataRepository.totalRideCountKey] = 20;
+      // MockSharedPreferences.data[FirebaseUserDataRepository.trophiesKey] = 'A3';
     });
 
     final now = DateTime.now();
@@ -105,8 +105,8 @@ void main() {
     final beforeYesterdayHistoryKey =
         generateKeyFromDateTime(now.subtract(Duration(days: 2)));
     void initHistoryWithThe3LastDaysKeys() {
-      MockSharedPreferences.data[FirebaseUserRepository.rideCountHistoryKey] =
-          json.encode({
+      MockSharedPreferences
+          .data[FirebaseUserDataRepository.rideCountHistoryKey] = json.encode({
         todayHistoryKey: 45,
         yesterdayHistoryKey: 9,
         beforeYesterdayHistoryKey: 23,
@@ -157,7 +157,7 @@ void main() {
         () async {
       initHistoryWithThe3LastDaysKeys();
       final initialHistory = json.decode(MockSharedPreferences
-          .data[FirebaseUserRepository.rideCountHistoryKey]);
+          .data[FirebaseUserDataRepository.rideCountHistoryKey]);
       initUser();
       // Wait for end of user Initialization.
       await Future.delayed(Duration.zero);

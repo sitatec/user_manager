@@ -1,15 +1,14 @@
 import 'package:cloud_firestore_mocks/cloud_firestore_mocks.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:firebase_database_mocks/firebase_database_mocks.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:mockito/mockito.dart';
 import 'package:test/test.dart';
 import 'package:user_manager/src/entities/user.dart';
 import 'package:user_manager/src/exceptions/authentication_exception.dart';
 import 'package:user_manager/src/firebase_gateways/firebase_auth_provider.dart';
-import 'package:user_manager/src/firebase_gateways/firebase_user_repository.dart';
-import 'package:user_manager/src/repositories/user_repository.dart';
-import 'package:user_manager/src/services/authentication_provider.dart';
+import 'package:user_manager/src/firebase_gateways/firebase_user_data_repository.dart';
+import 'package:user_manager/src/repositories/user_data_repository.dart';
+import 'package:user_manager/src/authentication_provider.dart';
 
 import '../mocks/mock_firebase_auth.dart';
 import '../mocks/mock_shared_preferences.dart';
@@ -18,24 +17,23 @@ class MockFacebookAuth extends Mock implements FacebookAuth {}
 
 void main() {
   FirebaseAuthProvider firebaseAuthProvider;
-  UserRepository userRepository;
+  UserDataRepository userDataRepository;
   firebase_auth.FirebaseAuth mockFirebaseAuth;
   setUp(() async {
     MockSharedPreferences.enabled = true;
     mockFirebaseAuth = MockFirebaseAuth();
     final firebaseFirestore = MockFirestoreInstance();
     final userAdditionalDataCollection = await firebaseFirestore
-        .collection(FirebaseUserRepository.usersAdditionalDataKey);
+        .collection(FirebaseUserDataRepository.usersAdditionalDataKey);
     await userAdditionalDataCollection
         .doc('aabbcc')
-        .set(FirebaseUserRepository.initialAdditionalData);
+        .set(FirebaseUserDataRepository.initialAdditionalData);
 
-    userRepository = FirebaseUserRepository.forTest(
+    userDataRepository = FirebaseUserDataRepository.forTest(
         firestoreDatabase: firebaseFirestore,
-        realTimeDatabase: MockFirebaseDatabase.instance,
         sharedPreferences: MockSharedPreferences());
     firebaseAuthProvider =
-        FirebaseAuthProvider.forTest(userRepository, mockFirebaseAuth);
+        FirebaseAuthProvider.forTest(userDataRepository, mockFirebaseAuth);
   });
   group('Authentication :', () {
     test('FirebaseUserInterface should be null if no user signed in', () {

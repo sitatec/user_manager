@@ -1,10 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/foundation.dart';
-import '../repositories/user_repository.dart';
-import '../utils/utils.dart';
+import '../repositories/user_data_repository.dart';
+import '../utils/helpers.dart';
 import '../entities/user.dart';
 
-import 'firebase_user_repository.dart';
+import 'firebase_user_data_repository.dart';
 
 // TODO: Refactor (keys and ride count handling).
 class FirebaseUserInterface implements User {
@@ -12,14 +12,14 @@ class FirebaseUserInterface implements User {
   String _trophies;
   String _trophiesCount;
   String _rideCount;
-  UserRepository _userRepository;
+  UserDataRepository _userDataRepository;
   String _formatedName;
   Map<String, dynamic> _rideCountHistory;
   FirebaseUserInterface({
     @required this.firebaseUser,
-    @required UserRepository userRepository,
+    @required UserDataRepository userDataRepository,
   }) {
-    _userRepository = userRepository;
+    _userDataRepository = userDataRepository;
     refreshAdditionalData();
     _formatedName = _getFormatedName();
   }
@@ -60,16 +60,16 @@ class FirebaseUserInterface implements User {
     // TODO: Refactoring.
     // TODO : Test: Ui most correctly display 'Erreur' (without overflow) when a error occur
     final errorData = {
-      FirebaseUserRepository.totalRideCountKey: 'Erreur',
-      FirebaseUserRepository.trophiesKey: 'Erreur',
+      FirebaseUserDataRepository.totalRideCountKey: 'Erreur',
+      FirebaseUserDataRepository.trophiesKey: 'Erreur',
     };
-    var additionalData = await _userRepository
+    var additionalData = await _userDataRepository
         .getAdditionalData(uid)
         ?.catchError((e) => errorData);
     additionalData ??= errorData;
-    _trophies = additionalData[FirebaseUserRepository.trophiesKey];
+    _trophies = additionalData[FirebaseUserDataRepository.trophiesKey];
     _rideCount =
-        additionalData[FirebaseUserRepository.totalRideCountKey].toString();
+        additionalData[FirebaseUserDataRepository.totalRideCountKey].toString();
     if (_trophies != 'Erreur') {
       _trophiesCount = ((trophies.split('')?.length) ?? 0).toString();
     } else {
@@ -80,7 +80,7 @@ class FirebaseUserInterface implements User {
 
   Map<String, dynamic> _getUserInterfaceFriendlyHistory() {
     try {
-      final rideCountHistory = _userRepository.getRideCountHistory();
+      final rideCountHistory = _userDataRepository.getRideCountHistory();
       _replaceWithUserFriendlyKey(
         originalData: rideCountHistory,
         keyMatcher: _getThe3LastDaysUserFriendlyHistoryKey(),
